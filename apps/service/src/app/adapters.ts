@@ -30,13 +30,19 @@ import {
   StubInvoiceMapper,
   StubStructureValidator,
 } from '../documents/adapters/outbound/in-memory/stub-validation';
+import { postgresProviders } from '../documents/adapters/outbound/postgres/postgres-providers';
+import { loadRabbitMqConfig } from '../documents/adapters/outbound/rabbitmq/rabbitmq-config';
+import { rabbitMqProviders } from '../documents/adapters/outbound/rabbitmq/rabbitmq-providers';
 import { RandomIdGenerator, SystemClock } from '../documents/adapters/outbound/system/system';
+import { validationProviders } from '../documents/adapters/outbound/validation/validation-providers';
+import { InMemoryDocumentConsumer } from '../documents/adapters/inbound/messaging/in-memory-consumer';
+import { messagingConsumers } from '../documents/adapters/inbound/messaging/rabbitmq-document-consumer';
 import type { AppConfig } from '../shared/config';
 
 /**
  * Composition root: binds every port to an adapter. `in-memory` is the walking skeleton
- * (no infrastructure needed); `real` binds Postgres, RabbitMQ, libxml2/SaxonJS and the VIES
- * fake, and is completed in work package G07 as the real adapters land.
+ * (no infrastructure needed, API and worker in one process); `real` binds Postgres, RabbitMQ,
+ * libxml2/SaxonJS and the VIES fake for the two processes of a deployment.
  */
 export interface InMemoryAdapters {
   db: InMemoryDatabase;
@@ -77,13 +83,39 @@ export function inMemoryProviders(adapters: InMemoryAdapters): Provider[] {
   ];
 }
 
-export function realProviders(_config: AppConfig): Provider[] {
-  // G07 replaces this with the Postgres, RabbitMQ, validation and VIES adapters.
-  throw new Error('ADAPTERS=real is not wired yet; use ADAPTERS=in-memory (walking skeleton)');
+/** The process the providers are for. Only the worker talks to RabbitMQ (the relay publishes). */
+export type ProcessRole = 'api' | 'worker';
+
+/**
+ * The real adapters. Missing settings are a startup error, not a failure on the first request:
+ * both processes need DATABASE_URL, the worker also AMQP_URL. The validation adapters and the
+ * VIES fake read their own settings (SCHEMATRON_*, VIES_*) from `env`.
+ */
+export function realProviders(
+  config: AppConfig,
+  role: ProcessRole,
+  env: NodeJS.ProcessEnv = process.env,
+): Provider[] {
+  if (!config.DATABASE_URL) throw new Error('DATABASE_URL is required when ADAPTERS=real');
+  if (role === 'worker' && !config.AMQP_URL) {
+    throw new Error('AMQP_URL is required for the worker when ADAPTERS=real');
+  }
+  return [
+    ...postgresProviders(config.DATABASE_URL),
+    ...(role === 'worker' ? rabbitMqProviders(loadRabbitMqConfig(env)) : []),
+    ...validationProviders(env),
+    { provide: Clock, useClass: SystemClock },
+    { provide: IdGenerator, useClass: RandomIdGenerator },
+  ];
 }
 
-export function adapterProviders(config: AppConfig, inMemory?: InMemoryAdapters): Provider[] {
+export function adapterProviders(config: AppConfig, role: ProcessRole): Provider[] {
   return config.ADAPTERS === 'in-memory'
-    ? inMemoryProviders(inMemory ?? createInMemoryAdapters())
-    : realProviders(config);
+    ? inMemoryProviders(createInMemoryAdapters())
+    : realProviders(config, role);
+}
+
+/** The worker's inbound adapter: what feeds messages to ProcessDocument. */
+export function consumerProviders(config: AppConfig): Provider[] {
+  return config.ADAPTERS === 'in-memory' ? [InMemoryDocumentConsumer] : messagingConsumers;
 }

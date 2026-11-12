@@ -30,6 +30,16 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm -F @xip/service prisma:generate
+      # The Schematron SEFs, so the specs that run the official rules are not skipped. Only the
+      # SEFs are cached: the downloaded Peppol .sch has no licence and is never stored.
+      - name: Cache the compiled Schematron (SEF)
+        id: sef-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: apps/service/validation-artefacts/generated/*.sef.json
+          key: sef-${{ hashFiles('apps/service/scripts/validation/**', 'apps/service/validation-artefacts/manifest.json', 'pnpm-lock.yaml') }}
+      - if: steps.sef-cache.outputs.cache-hit != 'true'
+        run: pnpm -F @xip/service build:validation
       - run: pnpm audit --prod --audit-level high
       - run: pnpm verify
 
@@ -84,7 +94,10 @@ jobs:
       # Builds both images from this commit; --wait returns once every service is healthy or running
       # and the migrate one-shot has completed.
       - run: docker compose --profile full up -d --build --wait --wait-timeout 300
-      - run: pnpm -F @xip/service test:e2e --passWithNoTests
+      # The e2e tests kill RabbitMQ and pause Postgres themselves (docker compose), then the demo
+      # runs against the same stack as a smoke test of `pnpm demo`.
+      - run: pnpm e2e
+      - run: pnpm demo
       - name: Dump the stack on failure
         if: failure()
         run: |

@@ -24,6 +24,7 @@ import {
 import { type DocumentView as DocumentViewRow, Prisma } from '../../../../generated/prisma/client';
 import {
   asTransaction,
+  guardUnavailable,
   isUniqueViolation,
   PrismaService,
   prismaTx,
@@ -38,7 +39,12 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  */
 const RELAY_TRANSACTION_TIMEOUT_MS = 15_000;
 
-/** One interactive transaction; its client is the Transaction every adapter writes with. */
+/**
+ * One interactive transaction; its client is the Transaction every adapter writes with. Writes
+ * only happen inside `run`, so its guard covers them; reads outside a transaction guard themselves.
+ * The relay's transactions (PrismaOutbox) are not guarded: nobody waits for them, and the relay
+ * loop logs a failure and tries again.
+ */
 @Injectable()
 export class PrismaUnitOfWork extends UnitOfWork {
   constructor(private readonly prisma: PrismaService) {
@@ -46,7 +52,9 @@ export class PrismaUnitOfWork extends UnitOfWork {
   }
 
   run<T>(work: (tx: Transaction) => Promise<T>): Promise<T> {
-    return this.prisma.$transaction((client) => work(asTransaction(client)));
+    return guardUnavailable(() =>
+      this.prisma.$transaction((client) => work(asTransaction(client))),
+    );
   }
 }
 
@@ -57,10 +65,9 @@ export class PrismaEventStore extends EventStore {
   }
 
   async load(streamId: string): Promise<StoredEvent[]> {
-    const rows = await this.prisma.event.findMany({
-      where: { streamId },
-      orderBy: { version: 'asc' },
-    });
+    const rows = await guardUnavailable(() =>
+      this.prisma.event.findMany({ where: { streamId }, orderBy: { version: 'asc' } }),
+    );
     return rows.map((row) => ({
       eventId: row.eventId,
       streamId: row.streamId,
@@ -149,9 +156,9 @@ export class PrismaDocumentViews extends DocumentViews {
   async get(organisationId: string, documentId: string): Promise<DocumentView | undefined> {
     // A malformed id (it comes from the URL) cannot exist; Postgres would reject it as a uuid.
     if (!UUID.test(documentId)) return undefined;
-    const row = await this.prisma.documentView.findFirst({
-      where: { documentId, organisationId },
-    });
+    const row = await guardUnavailable(() =>
+      this.prisma.documentView.findFirst({ where: { documentId, organisationId } }),
+    );
     return row ? toView(row) : undefined;
   }
 
@@ -161,22 +168,24 @@ export class PrismaDocumentViews extends DocumentViews {
     options: { limit: number; cursor?: string; status?: DocumentStatus },
   ): Promise<DocumentPage> {
     const after = options.cursor ? decodeCursor(options.cursor) : undefined;
-    const rows = await this.prisma.documentView.findMany({
-      where: {
-        organisationId,
-        ...(options.status ? { status: options.status } : {}),
-        ...(after
-          ? {
-              OR: [
-                { receivedAt: { lt: after.receivedAt } },
-                { receivedAt: after.receivedAt, documentId: { lt: after.documentId } },
-              ],
-            }
-          : {}),
-      },
-      orderBy: [{ receivedAt: 'desc' }, { documentId: 'desc' }],
-      take: options.limit + 1,
-    });
+    const rows = await guardUnavailable(() =>
+      this.prisma.documentView.findMany({
+        where: {
+          organisationId,
+          ...(options.status ? { status: options.status } : {}),
+          ...(after
+            ? {
+                OR: [
+                  { receivedAt: { lt: after.receivedAt } },
+                  { receivedAt: after.receivedAt, documentId: { lt: after.documentId } },
+                ],
+              }
+            : {}),
+        },
+        orderBy: [{ receivedAt: 'desc' }, { documentId: 'desc' }],
+        take: options.limit + 1,
+      }),
+    );
     const items = rows.slice(0, options.limit).map(toView);
     const last = items.at(-1);
     return {
@@ -245,7 +254,7 @@ export class PrismaBlobStore extends BlobStore {
   }
 
   async get(key: string): Promise<Blob | undefined> {
-    const row = await this.prisma.blob.findUnique({ where: { key } });
+    const row = await guardUnavailable(() => this.prisma.blob.findUnique({ where: { key } }));
     return row
       ? { key: row.key, contentType: row.contentType, content: Buffer.from(row.content) }
       : undefined;

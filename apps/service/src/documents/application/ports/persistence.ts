@@ -39,6 +39,19 @@ export class ConcurrencyError extends Error {
   }
 }
 
+/**
+ * Transient: the database could not be reached or did not answer in time. Usually nothing was
+ * committed, but after a timeout the outcome is unknown (the call may still commit). The API
+ * answers 503 and the client retries with the same Idempotency-Key; the worker requeues the
+ * message. Both paths are idempotent, so either outcome is safe.
+ */
+export class PersistenceUnavailableError extends Error {
+  constructor(reason: string) {
+    super(`Persistence unavailable: ${reason}`);
+    this.name = 'PersistenceUnavailableError';
+  }
+}
+
 export abstract class EventStore {
   /** All events of the stream in version order; empty when the stream does not exist. */
   abstract load(streamId: string): Promise<StoredEvent[]>;

@@ -5,6 +5,7 @@ import {
   IdempotencyConflictError,
   NotAPartyError,
 } from '../../documents/application/errors';
+import { PersistenceUnavailableError } from '../../documents/application/ports';
 import { DomainError } from '../../documents/domain/errors';
 import { type ProblemCode, problemCodes } from './problem-codes';
 
@@ -52,6 +53,9 @@ const problem = (
   const { status, title } = problemCodes[code];
   return { type: problemType(code), title, status, detail, code, ...extensions };
 };
+
+/** Seconds a client should wait before retrying after a 503 (an infrastructure outage). */
+export const SERVICE_UNAVAILABLE_RETRY_AFTER_SECONDS = 5;
 
 const internalError = (): RenderedProblem => ({
   problem: problem('INTERNAL_ERROR', 'An unexpected error occurred.'),
@@ -107,6 +111,14 @@ export function toProblem(error: unknown): RenderedProblem {
     return {
       problem: problem('DOCUMENT_NOT_FOUND', error.message),
       headers: {},
+      unexpected: false,
+    };
+  }
+  if (error instanceof PersistenceUnavailableError) {
+    // Transient and expected during an outage: no stack trace, and the reason stays internal.
+    return {
+      problem: problem('SERVICE_UNAVAILABLE', 'The service is temporarily unavailable.'),
+      headers: { 'Retry-After': String(SERVICE_UNAVAILABLE_RETRY_AFTER_SECONDS) },
       unexpected: false,
     };
   }

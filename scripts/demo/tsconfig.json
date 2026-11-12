@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    // Node runs the demo by stripping the types: only erasable TypeScript syntax is allowed.
+    "erasableSyntaxOnly": true,
+    // The workspace root has no @types/node; the service package does (same pinned version).
+    "typeRoots": ["../../apps/service/node_modules/@types"],
+    "types": ["node"]
+  },
+  "include": ["*.mts"]
+}
