@@ -1,8 +1,34 @@
-# Local infrastructure. `pnpm infra:up` starts only Postgres and RabbitMQ (profile "infra");
-# the API, worker and mock IdP run natively with Node during development.
-# The full stack (images from GHCR or a local build) is added by work package G06.
+# Profile "infra" (`pnpm infra:up`): only Postgres and RabbitMQ; the API, worker and mock IdP
+# run natively with Node during development.
+#
+# Profile "full": the whole stack from images, for demos and the e2e tests:
+#   docker compose --profile full up -d --build --wait
+# Images come from GHCR (TAG=1.2.3, default latest) or are built locally when missing or with
+# --build. Settings follow .env.example; the retry delays are short so a demo shows retries.
 
 name: xml-invoice-processor
+
+# One image runs the API, the worker and the migrations (see Dockerfile).
+x-service: &service
+  image: ghcr.io/gimme4bucks/xml-invoice-processor:${TAG:-latest}
+  build:
+    context: .
+    dockerfile: Dockerfile
+  profiles: [full]
+  read_only: true
+  init: true
+
+x-service-env: &service-env
+  ADAPTERS: ${ADAPTERS:-in-memory}
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  DATABASE_URL: postgresql://${POSTGRES_USER:-xip}:${POSTGRES_PASSWORD:-xip}@postgres:5432/${POSTGRES_DB:-xip}
+  AMQP_URL: amqp://${RABBITMQ_USER:-xip}:${RABBITMQ_PASSWORD:-xip}@rabbitmq:5672
+  RETRY_DELAYS_MS: ${RETRY_DELAYS_MS:-1000,2000,5000}
+  # The issuer is only compared as a string: clients on the host fetch tokens from
+  # localhost:4000, while the API fetches the keys inside the compose network.
+  AUTH_ISSUER: ${AUTH_ISSUER:-http://localhost:4000}
+  AUTH_AUDIENCE: ${AUTH_AUDIENCE:-xml-invoice-processor}
+  AUTH_JWKS_URL: http://mock-idp:4000/.well-known/jwks.json
 
 services:
   postgres:
@@ -37,6 +63,77 @@ services:
       interval: 3s
       timeout: 5s
       retries: 30
+    restart: unless-stopped
+
+  # One-shot: applies pending migrations, then exits. api and worker wait for it to succeed.
+  migrate:
+    <<: *service
+    command: [migrate]
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-xip}:${POSTGRES_PASSWORD:-xip}@postgres:5432/${POSTGRES_DB:-xip}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: 'no'
+
+  api:
+    <<: *service
+    command: [api]
+    environment:
+      <<: *service-env
+      API_PORT: 3000
+    ports:
+      - '${API_PORT:-3000}:3000'
+    # Not on mock-idp: the API fetches the signing keys on the first request, so it starts
+    # (and answers /health) without the IdP, as it must with a real external one.
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:3000/health']
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
+      start_interval: 1s
+    restart: unless-stopped
+
+  # No HTTP port, so no healthcheck: compose waits for it to be running.
+  worker:
+    <<: *service
+    command: [worker]
+    environment: *service-env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+  mock-idp:
+    image: ghcr.io/gimme4bucks/xml-invoice-processor-mock-idp:${TAG:-latest}
+    build:
+      context: .
+      dockerfile: apps/mock-idp/Dockerfile
+    profiles: [full]
+    read_only: true
+    init: true
+    environment:
+      MOCK_IDP_PORT: 4000
+      AUTH_ISSUER: ${AUTH_ISSUER:-http://localhost:4000}
+      AUTH_AUDIENCE: ${AUTH_AUDIENCE:-xml-invoice-processor}
+      # Demo-only clients (format: apps/mock-idp/.env.example): the supplier and the customer
+      # of the fixture invoices. Override MOCK_IDP_CLIENTS in .env for anything else.
+      MOCK_IDP_CLIENTS: ${MOCK_IDP_CLIENTS:-{"supplier-client":{"secret":"change-me","org_id":"org-supplier","peppol_id":"0106:11111111","scopes":["documents:submit","documents:read"]},"customer-client":{"secret":"change-me","org_id":"org-customer","peppol_id":"0106:22222222","scopes":["documents:submit","documents:read"]}}}
+    ports:
+      - '${MOCK_IDP_PORT:-4000}:4000'
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:4000/.well-known/jwks.json']
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
+      start_interval: 1s
     restart: unless-stopped
 
 volumes:

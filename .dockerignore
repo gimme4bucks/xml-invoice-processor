@@ -1,0 +1,21 @@
+# Keep the build context small and free of secrets: images are built from the lockfile and
+# sources only. Anything generated is regenerated inside the build.
+.git
+.github
+docs
+**/node_modules
+**/dist
+**/coverage
+**/*.log
+**/.env
+**/.env.*
+apps/service/src/generated
+apps/service/validation-artefacts/generated
+
+# Tests are not part of an image.
+apps/*/test
+**/*.spec.ts
+
+.DS_Store
+.idea
+.vscode

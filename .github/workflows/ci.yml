@@ -67,3 +67,29 @@ jobs:
       - run: pnpm -F @xip/service prisma:generate
       - run: pnpm -F @xip/service prisma:migrate
       - run: pnpm -F @xip/service test:contract --passWithNoTests
+
+  e2e:
+    name: End-to-end against the full compose stack
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -F @xip/service prisma:generate
+      # Builds both images from this commit; --wait returns once every service is healthy or running
+      # and the migrate one-shot has completed.
+      - run: docker compose --profile full up -d --build --wait --wait-timeout 300
+      - run: pnpm -F @xip/service test:e2e --passWithNoTests
+      - name: Dump the stack on failure
+        if: failure()
+        run: |
+          docker compose --profile full ps --all
+          docker compose --profile full logs --no-color --timestamps
+      - name: Stop the stack
+        if: always()
+        run: docker compose --profile full down --volumes
