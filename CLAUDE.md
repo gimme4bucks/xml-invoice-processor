@@ -75,6 +75,8 @@ apps/mock-idp/                 OAuth2 client-credentials issuer for dev/demo/e2e
    - Use TypeScript 5.9.3, not 7.
 8. **Shared contracts change only through the coordinator:** `application/ports/**`, `domain/document-events.ts`, `prisma/schema.prisma`, `test/contracts/**`. If you need a change, propose it in the PR description, or make it minimal and call it out explicitly.
 9. **Stay inside your work package's owned paths** (see its goal file).
+   Work on your `goal/*` branch only. Never push to `main` and never merge PRs yourself: open
+   a PR with `gh pr create`; a human reviews and squash-merges.
 10. **Write everything in English** (code, comments, docs, commit messages). Use Conventional Commits (`feat:`, `fix:`, `test:`, `docs:`, `chore:`…).
 11. **Do not use `import type` for classes that Nest injects.** It strips the decorator metadata that DI needs.
 
