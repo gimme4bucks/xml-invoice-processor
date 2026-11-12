@@ -1,0 +1,21 @@
+{
+  "name": "@xip/mock-idp",
+  "private": true,
+  "description": "Minimal OAuth2 client-credentials token issuer standing in for a real identity provider (dev, demo, e2e only).",
+  "license": "UNLICENSED",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run --passWithNoTests",
+    "start": "node --enable-source-maps dist/main.js"
+  },
+  "dependencies": {
+    "jose": "6.2.16"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "typescript": "5.9.3",
+    "vite": "8.3.6",
+    "vitest": "5.1.0"
+  }
+}

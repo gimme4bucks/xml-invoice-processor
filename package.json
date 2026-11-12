@@ -1,0 +1,32 @@
+{
+  "name": "xml-invoice-processor",
+  "private": true,
+  "description": "Receives Peppol BIS Billing 3.0 (UBL 2.1 XML) invoices over HTTP and processes them asynchronously.",
+  "license": "UNLICENSED",
+  "packageManager": "pnpm@10.34.9",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "eslint . --max-warnings 0",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "depcruise": "depcruise apps/service/src --config .dependency-cruiser.cjs",
+    "test": "pnpm -r test",
+    "test:contract": "pnpm -F @xip/service test:contract",
+    "verify": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm depcruise && pnpm test && pnpm build",
+    "infra:up": "docker compose --profile infra up -d --wait",
+    "infra:down": "docker compose --profile infra down"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "dependency-cruiser": "18.7.2",
+    "eslint": "10.14.0",
+    "eslint-config-prettier": "10.1.8",
+    "prettier": "3.9.10",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.72.1"
+  }
+}

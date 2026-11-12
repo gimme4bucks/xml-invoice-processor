@@ -1,0 +1,15 @@
+packages:
+  - apps/*
+
+# Supply chain: refuse package versions published less than 3 days ago.
+minimumReleaseAge: 4320
+
+# Supply chain: dependency install scripts are blocked unless listed here.
+onlyBuiltDependencies:
+  - '@swc/core'
+  - prisma
+  - '@prisma/engines'
+
+# Telemetry postinstall of a transitive dependency; deliberately not allowed to run.
+ignoredBuiltDependencies:
+  - '@scarf/scarf'

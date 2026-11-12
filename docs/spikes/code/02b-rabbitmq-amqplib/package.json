@@ -1,0 +1,32 @@
+{
+  "name": "spike-rabbitmq-amqplib",
+  "version": "1.0.0",
+  "description": "",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "t1": "node dist/test/t1-publish-200.js",
+    "t2": "node dist/test/t2-retry-delay.js",
+    "t3": "node dist/test/t3-poison-dlq.js",
+    "t3b": "node dist/test/t3b-dlx-strategy.js",
+    "t4": "node dist/test/t4-publish-during-restart.js",
+    "t5": "node dist/test/t5-consume-during-restart.js",
+    "t6": "node dist/test/t6-kill-before-ack.js",
+    "e1": "node dist/test/e1-acm-builtin-publish.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@nestjs/common": "12.5.0",
+    "@nestjs/core": "12.5.0",
+    "amqp-connection-manager": "5.0.1",
+    "amqplib": "2.3.1",
+    "reflect-metadata": "0.2.2",
+    "rxjs": "7.8.2"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "typescript": "5.9.3"
+  }
+}

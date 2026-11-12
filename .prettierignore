@@ -1,0 +1,6 @@
+pnpm-lock.yaml
+dist/
+coverage/
+apps/service/src/generated/
+apps/service/validation-artefacts/
+docs/spikes/

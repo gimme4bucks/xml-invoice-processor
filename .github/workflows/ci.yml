@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Prisma's config needs a URL even for `generate`; jobs with a database override it.
+  DATABASE_URL: postgresql://xip:xip@localhost:5432/xip
+
+jobs:
+  verify:
+    name: Format, lint, types, architecture, unit tests, build
+    runs-on: ubuntu-latest
+    steps:
+      # Actions are pinned to commit SHAs (supply chain); the comment shows the release.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -F @xip/service prisma:generate
+      - run: pnpm audit --prod --audit-level high
+      - run: pnpm verify
+
+  contract:
+    name: Port contracts against Postgres and RabbitMQ
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18.6-alpine
+        env:
+          POSTGRES_USER: xip
+          POSTGRES_PASSWORD: xip
+          POSTGRES_DB: xip
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U xip -d xip" --health-interval 2s --health-timeout 3s --health-retries 30
+      rabbitmq:
+        image: rabbitmq:4.4.0-management-alpine
+        env:
+          RABBITMQ_DEFAULT_USER: xip
+          RABBITMQ_DEFAULT_PASS: xip
+        ports: ['5672:5672']
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q ping" --health-interval 3s --health-timeout 5s --health-retries 30
+    env:
+      AMQP_URL: amqp://xip:xip@localhost:5672
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -F @xip/service prisma:generate
+      - run: pnpm -F @xip/service prisma:migrate
+      - run: pnpm -F @xip/service test:contract --passWithNoTests

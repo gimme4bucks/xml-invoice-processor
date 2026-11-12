@@ -1,0 +1,85 @@
+// Persistence contract shared by all work packages. Change it only through the coordinator.
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// Append-only event store: one stream per document.
+/// UPDATE and DELETE are blocked by a trigger (see the init migration).
+model Event {
+  globalPosition BigInt   @id @default(autoincrement()) @map("global_position")
+  eventId        String   @unique @map("event_id") @db.Uuid
+  streamId       String   @map("stream_id") @db.Uuid
+  version        Int
+  type           String
+  data           Json
+  metadata       Json
+  occurredAt     DateTime @map("occurred_at") @db.Timestamptz(3)
+
+  @@unique([streamId, version], map: "events_stream_version_key")
+  @@map("events")
+}
+
+/// Transactional outbox. Rows are written in the same transaction as the events and
+/// published by the relay; `id` doubles as the AMQP messageId.
+model OutboxMessage {
+  id          String    @id @db.Uuid
+  routingKey  String    @map("routing_key")
+  payload     Json
+  headers     Json
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  publishedAt DateTime? @map("published_at") @db.Timestamptz(3)
+  attempts    Int       @default(0)
+  lastError   String?   @map("last_error")
+
+  @@map("outbox")
+}
+
+/// Read model, projected from the document stream in the same transaction as the events.
+model DocumentView {
+  documentId     String    @id @map("document_id") @db.Uuid
+  organisationId String    @map("organisation_id")
+  documentType   String    @map("document_type")
+  direction      String
+  status         String
+  attempts       Int
+  failure        Json?
+  receivedAt     DateTime  @map("received_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @map("updated_at") @db.Timestamptz(3)
+  completedAt    DateTime? @map("completed_at") @db.Timestamptz(3)
+  version        Int
+
+  @@index([organisationId, receivedAt(sort: Desc)], map: "document_views_org_received_idx")
+  @@map("document_views")
+}
+
+/// Idempotency: one document per (organisation, Idempotency-Key) and per (organisation, content hash).
+model IdempotencyRecord {
+  organisationId String   @map("organisation_id")
+  idempotencyKey String   @map("idempotency_key")
+  contentHash    String   @map("content_hash")
+  documentId     String   @map("document_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@id([organisationId, idempotencyKey], map: "idempotency_records_pkey")
+  @@unique([organisationId, contentHash], map: "idempotency_records_org_hash_key")
+  @@map("idempotency_records")
+}
+
+/// Document storage behind the BlobStore port (original XML, processing result).
+/// Kept in Postgres for now so it shares the transaction; S3 is a documented follow-up.
+model Blob {
+  key         String   @id
+  contentType String   @map("content_type")
+  content     Bytes
+  sha256      String
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("blobs")
+}
