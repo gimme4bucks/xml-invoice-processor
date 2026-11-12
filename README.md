@@ -18,9 +18,8 @@ asynchronously. Every document has a status: `Received`, `Processing`, `Complete
 
 ## Quick start
 
-Requirements: Docker with Compose v2 and buildx 0.17 or newer (2 GB of memory for the VM is enough),
-Node 22 and pnpm 10
-(through Corepack) for the demo script.
+Requirements: Docker with Compose v2 (2 GB of memory for the VM is enough; building the images
+yourself needs buildx 0.17 or newer), Node 22 and pnpm 10 (through Corepack) for the demo script.
 
 ```bash
 git clone https://github.com/gimme4bucks/xml-invoice-processor.git && cd xml-invoice-processor
@@ -32,7 +31,15 @@ docker compose --profile full down --volumes         # stop everything and remov
 ```
 
 The first build takes a few minutes: it downloads the Peppol rules (sha256-checked) and compiles
-them. `pnpm demo` prints each step; it ends with `All scenarios behaved as expected.` The
+them. To skip it, use the published release images instead: they are public on GHCR
+(`ghcr.io/gimme4bucks/xml-invoice-processor` and `-mock-idp`, linux/amd64 and linux/arm64).
+
+```bash
+docker compose --profile full pull           # the latest release; prefix both commands with TAG=1.0.0 to pin it
+docker compose --profile full up -d --wait   # no --build: uses the pulled images
+```
+
+`pnpm demo` prints each step; it ends with `All scenarios behaved as expected.` The
 [examples](examples/README.md) show the same flows with curl, the demo clients and what each
 example invoice does.
 
