@@ -16,7 +16,8 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",
     "prisma:migrate:dev": "prisma migrate dev",
-    "build:watch": "swc src -d dist --strip-leading-paths --config-file .swcrc --ignore \"**/*.spec.ts\" --watch"
+    "build:watch": "swc src -d dist --strip-leading-paths --config-file .swcrc --ignore \"**/*.spec.ts\" --watch",
+    "build:validation": "bash scripts/validation/fetch-and-compile.sh"
   },
   "dependencies": {
     "@nestjs/common": "12.4.0",

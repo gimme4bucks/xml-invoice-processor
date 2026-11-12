@@ -1,0 +1,59 @@
+{
+  "$comment": "Pinned validation artefacts (ADR 0001, spike 01). `committed` files are checked in unmodified; `fetched` ones are downloaded at build time by scripts/validation/fetch-and-compile.sh. Every file is verified against its sha256 before use.",
+  "committed": {
+    "ubl": {
+      "name": "OASIS UBL 2.1 OS, runtime schemas (xsdrt), Invoice only",
+      "source": "https://docs.oasis-open.org/ubl/os-UBL-2.1/UBL-2.1.zip",
+      "sourceSha256": "60b80d76394a8a2add90723ecb8e0e2e9d826775de9749df37a72d60703f86ed",
+      "licence": "ubl-2.1/NOTICE.txt",
+      "files": {
+        "ubl-2.1/xsdrt/common/CCTS_CCT_SchemaModule-2.1.xsd": "dd546e4809df86b6445589f69f0d6c9df162840ae386574ddfc1da7638103e15",
+        "ubl-2.1/xsdrt/common/UBL-CommonAggregateComponents-2.1.xsd": "580b5af6f68f7f556bd15945ba0e819cbf561442c81694f9b9468036ebedec4d",
+        "ubl-2.1/xsdrt/common/UBL-CommonBasicComponents-2.1.xsd": "a3b349bf92e5cff26e303d2f05b7e00c884dcafcfd9e12755fb80289abf5e22e",
+        "ubl-2.1/xsdrt/common/UBL-CommonExtensionComponents-2.1.xsd": "ad7a4e490978adfbcfc5ec0bb20941cf11ac960ccf0c4de8791a7c731a8dbe87",
+        "ubl-2.1/xsdrt/common/UBL-CommonSignatureComponents-2.1.xsd": "4fa9e2370100040fe14c43e135ef77e2eb66b21cb8dbfc2ffb8d82ae991fe92e",
+        "ubl-2.1/xsdrt/common/UBL-CoreComponentParameters-2.1.xsd": "8be3379dbdcbcc7802fafdd16bac72c48fff1c0bb364213a31a17911dd06100b",
+        "ubl-2.1/xsdrt/common/UBL-ExtensionContentDataType-2.1.xsd": "fcee77a11870208e6377ea6311b9f2a050bca24bdad8606ea02d71e9f9e72f8d",
+        "ubl-2.1/xsdrt/common/UBL-QualifiedDataTypes-2.1.xsd": "7dcb156e610239c97ae70940cf4653b88e48c3595bf5f56a2204a32e2893e6cf",
+        "ubl-2.1/xsdrt/common/UBL-SignatureAggregateComponents-2.1.xsd": "9234c2ca48dbfa9a22a786112bb075c5922a305170920eaab1e3c04fa0b7344b",
+        "ubl-2.1/xsdrt/common/UBL-SignatureBasicComponents-2.1.xsd": "0fbe2d7afff0c1e11164b8ec83e13f18801021c3c87e390a9d76f9cf862f6a64",
+        "ubl-2.1/xsdrt/common/UBL-UnqualifiedDataTypes-2.1.xsd": "09052d406b4293e2a5f9c2bfee6df10ad4d8d5f0b36e24a6349d7f7936d89eb6",
+        "ubl-2.1/xsdrt/common/UBL-XAdESv132-2.1.xsd": "a4f726bcf8cc3f7d9ffa4dab99e005535a8e8b60dced1e5d94578d2e05afa96e",
+        "ubl-2.1/xsdrt/common/UBL-XAdESv141-2.1.xsd": "1fa4625e9cefcb7a9abb5ac1b64315547450031eece8a55bd584e4ba4b79dbc1",
+        "ubl-2.1/xsdrt/common/UBL-xmldsig-core-schema-2.1.xsd": "101909c9f06456d61ddcc4fb982f1d40dc357b439f393b1a2eb46e42acd60809",
+        "ubl-2.1/xsdrt/maindoc/UBL-Invoice-2.1.xsd": "3a5aacd823f0e5b8f25ae7b5191c2002d5333ba351d87de9371ed62dca2b2b0c"
+      }
+    },
+    "cen": {
+      "name": "CEN EN 16931 UBL validation artefacts 1.3.16 (precompiled XSLT)",
+      "source": "https://github.com/ConnectingEurope/eInvoicing-EN16931/releases/download/validation-1.3.16/en16931-ubl-1.3.16.zip",
+      "sourceSha256": "bafada015efbc5248bf5e05ad2191e1d9833ef96e9dd5f4bce420a747342da85",
+      "licenceSource": "https://raw.githubusercontent.com/ConnectingEurope/eInvoicing-EN16931/validation-1.3.16/LICENSE.txt",
+      "licence": "en16931-ubl-1.3.16/LICENSE-EUPL-1.2.txt",
+      "files": {
+        "en16931-ubl-1.3.16/EN16931-UBL-validation.xslt": "39f9d282867f1a49e7708d9e29a53da89643e1ee56f10cec1ebcf1277595fcbd",
+        "en16931-ubl-1.3.16/LICENSE-EUPL-1.2.txt": "fc22ec1dcd8bee4636a395fb332e2308cde870fb3fdc71a2e260b919877cdef5"
+      }
+    }
+  },
+  "fetched": {
+    "peppol": {
+      "name": "OpenPeppol BIS Billing 3.0.22 Schematron (UBL)",
+      "url": "https://raw.githubusercontent.com/OpenPEPPOL/peppol-bis-invoice-3/3.0.22/rules/sch/PEPPOL-EN16931-UBL.sch",
+      "sha256": "f637444fab75a6da7e5004f94a6de8e71383ef5658dafe6c68925103b17ea148",
+      "file": "PEPPOL-EN16931-UBL.sch",
+      "note": "No licence published; never commit it (ADR 0001)."
+    },
+    "schxslt2": {
+      "name": "SchXslt2 1.11.2 (MIT), Schematron to XSLT transpiler",
+      "url": "https://codeberg.org/SchXslt/schxslt2/releases/download/v1.11.2/schxslt2-1.11.2.zip",
+      "sha256": "a0f5be3173113eb5ff4b5cf246fd9d1af0497a90df37023d3c0ccf60422af37c",
+      "file": "schxslt2-1.11.2.zip",
+      "entry": "schxslt2-1.11.2/transpile.xsl"
+    }
+  },
+  "generated": {
+    "cen": "generated/cen-en16931-ubl.sef.json",
+    "peppol": "generated/peppol-en16931-ubl.sef.json"
+  }
+}
