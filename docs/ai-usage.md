@@ -92,7 +92,7 @@ The sessions never pushed to `main` or merged themselves. Every package arrived 
   - The first spike measured that on RabbitMQ 4.4, nack does not count: a poison message was redelivered about 24k times in 30 s. The second spike confirmed it.
   - We use `reject` instead ([ADR 0006](adr/0006-own-rabbitmq-adapter.md)).
 - **Event store.**
-  - I asked for a dedicated event store (KurrentDB) to be analyzed seriously and documented, not just dismissed.
+  - I asked for a dedicated event store (KurrentDB) to be analysed seriously and documented, not just dismissed.
   - That analysis, including when it would become the right choice, is in [ADR 0003](adr/0003-event-sourcing-in-postgresql.md).
 - **Integration risk.**
   - I was worried that wiring the parallel work together would not go smoothly.
