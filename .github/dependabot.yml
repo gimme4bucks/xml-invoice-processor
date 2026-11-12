@@ -1,0 +1,48 @@
+# Weekly update proposals. Dependabot only opens PRs; a human reviews and merges them.
+# The cooldown mirrors pnpm's minimumReleaseAge: no versions younger than 3 days.
+version: 2
+
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3
+    # Minor and patch updates arrive as one PR; majors stay separate, one per package.
+    groups:
+      npm-minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      # TypeScript stays on 5.x (CLAUDE.md: 5.9.3, not 7).
+      - dependency-name: typescript
+        update-types: ['version-update:semver-major']
+      # The runtime is Node 22, so its types follow 22.x.
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3
+    groups:
+      github-actions:
+        patterns: ['*']
+
+  - package-ecosystem: docker
+    directories:
+      - /
+      - /apps/mock-idp
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3
+    groups:
+      docker-base-images:
+        patterns: ['*']
+    ignore:
+      # The runtime stays on Node 22 (LTS) until we decide to move.
+      - dependency-name: node
+        update-types: ['version-update:semver-major']
