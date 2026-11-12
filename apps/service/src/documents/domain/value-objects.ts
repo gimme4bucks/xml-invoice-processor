@@ -7,6 +7,64 @@ export type DocumentType = 'Invoice';
 
 export type DocumentStatus = 'Received' | 'Processing' | 'Completed' | 'Failed';
 
+/** The organisation (tenant) a document belongs to. Always taken from the access token. */
+export class OrganisationId {
+  private constructor(readonly value: string) {}
+
+  static parse(raw: string): OrganisationId {
+    if (raw.trim() === '') {
+      throw new DomainError('INVALID_ORGANISATION_ID', 'The organisation id must not be empty');
+    }
+    return new OrganisationId(raw);
+  }
+
+  toString(): string {
+    return this.value;
+  }
+}
+
+/**
+ * The client's `Idempotency-Key` (ADR 0007): 1–255 printable ASCII characters, space included.
+ * Scoped per organisation.
+ */
+export class IdempotencyKey {
+  private constructor(readonly value: string) {}
+
+  static parse(raw: string): IdempotencyKey {
+    if (!/^[\x20-\x7e]{1,255}$/.test(raw)) {
+      // The raw value is not echoed: it is untrusted input of any length.
+      throw new DomainError(
+        'INVALID_IDEMPOTENCY_KEY',
+        'The Idempotency-Key must be 1 to 255 printable ASCII characters',
+      );
+    }
+    return new IdempotencyKey(raw);
+  }
+
+  toString(): string {
+    return this.value;
+  }
+}
+
+/** SHA-256 of the submitted bytes as 64 lowercase hex characters (Node's `digest('hex')`). */
+export class ContentHash {
+  private constructor(readonly value: string) {}
+
+  static parse(raw: string): ContentHash {
+    if (!/^[0-9a-f]{64}$/.test(raw)) {
+      throw new DomainError(
+        'INVALID_CONTENT_HASH',
+        'A content hash must be a SHA-256 digest as 64 lowercase hex characters',
+      );
+    }
+    return new ContentHash(raw);
+  }
+
+  toString(): string {
+    return this.value;
+  }
+}
+
 /**
  * Peppol participant identifier, e.g. `0106:12345678` (scheme 0106 = Dutch KvK number).
  * Stored as `scheme:value`, compared case-insensitively as Peppol prescribes.

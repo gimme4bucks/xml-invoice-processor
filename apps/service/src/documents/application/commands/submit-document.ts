@@ -1,7 +1,15 @@
 import { createHash } from 'node:crypto';
 import { CommandHandler, type ICommandHandler } from '@nestjs/cqrs';
 import { Document } from '../../domain/document';
-import { determineDirection, PeppolParticipantId } from '../../domain/value-objects';
+import {
+  ContentHash,
+  determineDirection,
+  type DocumentType,
+  IdempotencyKey,
+  type InvoiceDirection,
+  OrganisationId,
+  PeppolParticipantId,
+} from '../../domain/value-objects';
 import { buildView, originalBlobKey } from '../document-view';
 import { DocumentRejectedError, IdempotencyConflictError, NotAPartyError } from '../errors';
 import {
@@ -19,6 +27,10 @@ import {
   UnitOfWork,
 } from '../ports';
 
+/**
+ * Raw values from the access token and the request. The handler parses them into value objects
+ * and rejects invalid ones with a DomainError (stable code), whichever inbound adapter sent them.
+ */
 export class SubmitDocumentCommand {
   constructor(
     readonly input: {
@@ -32,6 +44,18 @@ export class SubmitDocumentCommand {
       correlationId: string;
     },
   ) {}
+}
+
+/** The validated command input, as stored in one unit of work. */
+interface Intake {
+  organisationId: OrganisationId;
+  idempotencyKey: IdempotencyKey;
+  contentHash: ContentHash;
+  documentType: DocumentType;
+  direction: InvoiceDirection;
+  xml: Buffer;
+  clientId: string;
+  correlationId: string;
 }
 
 export interface SubmitDocumentResult {
@@ -64,41 +88,49 @@ export class SubmitDocumentHandler implements ICommandHandler<
   ) {}
 
   async execute({ input }: SubmitDocumentCommand): Promise<SubmitDocumentResult> {
+    // Cheap input checks first; each throws a DomainError with a stable code.
+    const organisationId = OrganisationId.parse(input.organisationId);
+    const idempotencyKey = IdempotencyKey.parse(input.idempotencyKey);
+    const peppolId = PeppolParticipantId.parse(input.peppolId);
+
     const structure = this.structure.validate(input.xml);
     if (!structure.valid) throw new DocumentRejectedError(structure);
 
     const invoice = this.mapper.map(input.xml);
     const direction = determineDirection(
-      PeppolParticipantId.parse(input.peppolId),
+      peppolId,
       invoice.supplier.endpointId,
       invoice.customer.endpointId,
     );
     if (!direction) throw new NotAPartyError();
 
-    const contentHash = createHash('sha256').update(input.xml).digest('hex');
-    const store = () => this.store(input, structure.documentType, direction, contentHash);
+    const intake: Intake = {
+      organisationId,
+      idempotencyKey,
+      contentHash: ContentHash.parse(createHash('sha256').update(input.xml).digest('hex')),
+      documentType: structure.documentType,
+      direction,
+      xml: input.xml,
+      clientId: input.clientId,
+      correlationId: input.correlationId,
+    };
     try {
-      return await store();
+      return await this.store(intake);
     } catch (error) {
       // A concurrent request won the unique index; the second try sees its committed row.
-      if (error instanceof IdempotencyRaceError) return store();
+      if (error instanceof IdempotencyRaceError) return this.store(intake);
       throw error;
     }
   }
 
-  private store(
-    input: SubmitDocumentCommand['input'],
-    documentType: 'Invoice',
-    direction: 'purchase' | 'sales',
-    contentHash: string,
-  ): Promise<SubmitDocumentResult> {
+  private store(intake: Intake): Promise<SubmitDocumentResult> {
     return this.uow.run(async (tx) => {
       const documentId = this.ids.newId();
       const registration = await this.idempotency.register(
         {
-          organisationId: input.organisationId,
-          idempotencyKey: input.idempotencyKey,
-          contentHash,
+          organisationId: intake.organisationId.value,
+          idempotencyKey: intake.idempotencyKey.value,
+          contentHash: intake.contentHash.value,
           documentId,
         },
         tx,
@@ -113,11 +145,11 @@ export class SubmitDocumentHandler implements ICommandHandler<
       const document = Document.receive(
         {
           documentId,
-          organisationId: input.organisationId,
-          idempotencyKey: input.idempotencyKey,
-          contentHash,
-          documentType,
-          direction,
+          organisationId: intake.organisationId,
+          idempotencyKey: intake.idempotencyKey,
+          contentHash: intake.contentHash,
+          documentType: intake.documentType,
+          direction: intake.direction,
         },
         this.clock.now(),
       );
@@ -125,11 +157,11 @@ export class SubmitDocumentHandler implements ICommandHandler<
         documentId,
         0,
         document.pendingEvents,
-        { correlationId: input.correlationId, actor: input.clientId },
+        { correlationId: intake.correlationId, actor: intake.clientId },
         tx,
       );
       await this.blobs.put(
-        { key: originalBlobKey(documentId), contentType: 'application/xml', content: input.xml },
+        { key: originalBlobKey(documentId), contentType: 'application/xml', content: intake.xml },
         tx,
       );
       await this.views.upsert(buildView(stored), tx);
@@ -139,7 +171,7 @@ export class SubmitDocumentHandler implements ICommandHandler<
             id: this.ids.newId(),
             routingKey: RoutingKeys.process,
             payload: { documentId, attempt: 1 },
-            headers: { 'x-correlation-id': input.correlationId },
+            headers: { 'x-correlation-id': intake.correlationId },
           },
         ],
         tx,
