@@ -35,6 +35,7 @@ const testConfig = (): RabbitMqConfig => ({
   prefix: `test-${randomUUID().slice(0, 8)}.`,
   prefetch: 4,
   retryDelaysMs: [RETRY_DELAY_MS, RETRY_DELAY_MS * 2, RETRY_DELAY_MS * 3],
+  requeueDelayMs: { base: 1, max: 20 },
 });
 
 /** A plain amqplib connection next to the adapters, to inspect and clean up the broker. */

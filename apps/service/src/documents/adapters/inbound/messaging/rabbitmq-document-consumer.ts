@@ -11,6 +11,7 @@ import type { ChannelWrapper } from 'amqp-connection-manager';
 import { ProcessDocumentCommand } from '../../../application/commands/process-document';
 import type { ProcessDocumentMessage } from '../../../application/ports';
 import { AmqpConnection } from '../../outbound/rabbitmq/amqp-connection';
+import { requeueDelay } from '../../outbound/rabbitmq/rabbitmq-config';
 
 /**
  * Inbound adapter for the worker: turns deliveries from `documents.process` into
@@ -76,7 +77,14 @@ export class RabbitMqDocumentConsumer implements OnApplicationBootstrap, OnModul
     try {
       await this.commands.execute(toCommand(message)); // resolves after the commit
     } catch (error) {
-      this.logger.warn(`Message ${messageId} failed, requeueing it: ${(error as Error).message}`);
+      const deliveries = Number(message.properties.headers?.['x-delivery-count'] ?? 0);
+      const delayMs = requeueDelay(deliveries, this.connection.config.requeueDelayMs);
+      this.logger.warn(
+        `Message ${messageId} failed, requeueing it in ${delayMs} ms: ${(error as Error).message}`,
+      );
+      // Back off before requeueing. Holding the delivery also takes a prefetch slot, so during an
+      // outage (e.g. Postgres down) the worker slows down instead of dead-lettering everything.
+      if (!this.stopping) await new Promise((resolve) => setTimeout(resolve, delayMs));
       // basic.reject, never basic.nack: on RabbitMQ 4.4 only reject counts toward
       // x-delivery-limit, so a poison message ends in the DLQ instead of looping (spike 02b, T3).
       return this.settle(messageId, () => channel.reject(message, true));

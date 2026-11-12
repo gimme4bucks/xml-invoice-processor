@@ -10,6 +10,21 @@ export interface RabbitMqConfig {
   prefetch: number;
   /** TTL of each retry queue, in the order of `RoutingKeys.retry` (5 s, 30 s, 2 min by default). */
   retryDelaysMs: readonly number[];
+  /**
+   * Back-off before a failed delivery is requeued: `base * 2^deliveryCount`, capped at `max`.
+   * Keeps an infrastructure outage (e.g. Postgres down) from burning the delivery limit in
+   * milliseconds and dead-lettering healthy messages.
+   */
+  requeueDelayMs: { base: number; max: number };
+}
+
+/** Delay before requeueing a delivery that has already been delivered `deliveryCount` times. */
+export function requeueDelay(
+  deliveryCount: number,
+  delay: RabbitMqConfig['requeueDelayMs'],
+): number {
+  const count = Number.isFinite(deliveryCount) ? Math.max(0, deliveryCount) : 0;
+  return Math.min(delay.base * 2 ** count, delay.max);
 }
 
 const schema = z.object({
@@ -21,6 +36,8 @@ const schema = z.object({
     .default('5000,30000,120000')
     .transform((value) => value.split(',').map(Number))
     .pipe(z.array(z.number().int().positive()).length(RoutingKeys.retry.length)),
+  AMQP_REQUEUE_DELAY_BASE_MS: z.coerce.number().int().nonnegative().default(1_000),
+  AMQP_REQUEUE_DELAY_MAX_MS: z.coerce.number().int().nonnegative().default(30_000),
 });
 
 /** Reads the RabbitMQ settings from the environment; throws when AMQP_URL is missing. */
@@ -31,5 +48,9 @@ export function loadRabbitMqConfig(env: NodeJS.ProcessEnv = process.env): Rabbit
     prefix: parsed.AMQP_PREFIX,
     prefetch: parsed.AMQP_PREFETCH,
     retryDelaysMs: parsed.RETRY_DELAYS_MS,
+    requeueDelayMs: {
+      base: parsed.AMQP_REQUEUE_DELAY_BASE_MS,
+      max: parsed.AMQP_REQUEUE_DELAY_MAX_MS,
+    },
   };
 }
