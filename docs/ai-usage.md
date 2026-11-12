@@ -1,7 +1,5 @@
 # AI usage
 
-> **Draft.** This covers the planning phase. Sections about the implementation phase are marked TODO and will be filled in later.
-
 This document describes how I used AI to build this service:
 
 - which tools I used, and for what;
@@ -106,6 +104,8 @@ The sessions never pushed to `main` or merged themselves. Every package arrived 
   - G05: an unreachable identity provider gives `503`, not `401`, so clients retry instead of assuming their credentials are wrong; and the body is read only after authentication.
   - G02: a business-rule timeout fails the document permanently instead of retrying, since the same document would time out again.
   - G06: the e2e runs used their own Compose project name, so they could not stop the infrastructure that the other sessions were using.
+  - G07: no pg `query_timeout`. The session found that when it fires on a transaction's `ROLLBACK`, Prisma still returns the connection to the pool, so a later transaction could commit abandoned writes. It bounded the waiting with a connect timeout, Prisma's transaction limits and an overall deadline instead.
+- **"Nothing was stored" after a 503 was too strong.** G07's deadline stops waiting, but a write may still commit. The coordinating session changed the 503 description: the outcome is unknown, and a retry with the same key is safe either way.
 
 ## Suggestions I deliberately did not adopt
 
@@ -181,21 +181,37 @@ The sessions never pushed to `main` or merged themselves. Every package arrived 
 - **CI** ran on every pull request against the merge with `main`. A locally green `pnpm verify` after each merge confirmed the integration.
 - **The usage limit** of the account stopped the second wave halfway through. Because every session works in its own worktree, nothing was lost: the sessions were resumed with their own context (`claude --resume`) and finished their work. Lesson: three parallel sessions use up a usage limit quickly.
 
+- **Running it as a newcomer would.** After the last merge, the coordinating session rebuilt the stack from `main` and ran `pnpm demo`. It failed: an `.env` copied from an older `.env.example` set `ADAPTERS=in-memory`, so the API and the worker each had their own memory and no document was ever processed. The Compose stack now always uses the real adapters. All tests had been green; only running it end to end, the way a reviewer would, showed it.
+- **The first release run** on `main` failed: the download pattern for the service image's digests also matched the mock IdP's. Fixed in a follow-up PR; the next run published both images.
+
 During the implementation I delegated layer 4, the merge decision, to the coordinating session: it merged after its review and a green CI.
+
+**The `/goal` sessions in numbers.** Wall-clock time and turns per session, and the cost Claude Code reports (the API list-price equivalent; the sessions ran under a subscription). G02, G05 and G06 were interrupted by the usage limit and resumed, so they count two runs.
+
+| Work package               | Time                               | Turns | Reported cost |
+| -------------------------- | ---------------------------------- | ----- | ------------- |
+| G01 domain and application | 15 min                             | 45    | $4.58         |
+| G02 validation             | 22 min                             | 99    | $11.13        |
+| G03 persistence            | 12 min                             | 43    | $3.26         |
+| G04 messaging              | 12 min                             | 48    | $3.62         |
+| G05 HTTP and security      | 18 min                             | 68    | $9.41         |
+| G06 delivery               | 28 min                             | 97    | $8.33         |
+| G07 integration and e2e    | 32 min                             | 123   | $10.04        |
+| **Total**                  | 2 h 19 min (at most 3 in parallel) | 523   | $50.37        |
 
 ## Time spent
 
 The planning numbers come from the session log; times are approximate. "Agent time" is the wall-clock time of agents working in the background, in parallel with me.
 
-| Phase                                       | My own time | Agent time                   | Notes                                                  |
-| ------------------------------------------- | ----------- | ---------------------------- | ------------------------------------------------------ |
-| Preparation, before the planning session    | ~1.5 h      | –                            |                                                        |
-| Planning session (2026-11-12, ~11:40–15:50) | ~4 h 10 min | –                            | Interactive, with the coordinating Claude Code session |
-| Spike 01: validation                        | –           | ~40–45 min (14:05 to ~14:45) | Background subagent, during the planning session       |
-| Spike 02a: `@golevelup/nestjs-rabbitmq`     | –           | ~40 min (~15:00 to ~15:40)   | Ran in parallel with 02b                               |
-| Spike 02b: own adapter (amqplib)            | –           | ~1 h (~15:00 to ~16:00)      | Ran in parallel with 02a                               |
-| Phase 1: foundation                         | TODO        | TODO                         | Coordinating session                                   |
-| Phase 2: work packages G01–G06              | TODO        | TODO                         | `/goal` sessions, at most 3 in parallel                |
-| Phase 3: integration (G07)                  | TODO        | TODO                         |                                                        |
-| Reviews and documentation                   | TODO        | TODO                         |                                                        |
-| **Total**                                   | TODO        | TODO                         |                                                        |
+| Phase                                       | My own time                | Agent time                                                                                              | Notes                                                                |
+| ------------------------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| Preparation, before the planning session    | ~1.5 h                     | –                                                                                                       |                                                                      |
+| Planning session (2026-11-12, ~11:40–15:50) | ~4 h 10 min                | –                                                                                                       | Interactive, with the coordinating Claude Code session               |
+| Spike 01: validation                        | –                          | ~40–45 min (14:05 to ~14:45)                                                                            | Background subagent, during the planning session                     |
+| Spike 02a: `@golevelup/nestjs-rabbitmq`     | –                          | ~40 min (~15:00 to ~15:40)                                                                              | Ran in parallel with 02b                                             |
+| Spike 02b: own adapter (amqplib)            | –                          | ~1 h (~15:00 to ~16:00)                                                                                 | Ran in parallel with 02a                                             |
+| Phase 1: foundation                         | check-ins                  | ~50 min (~15:50 to ~16:40)                                                                              | Coordinating session                                                 |
+| Phase 2: work packages G01–G06              | check-ins                  | ~50 min (~16:44 to ~17:35)                                                                              | `/goal` sessions, at most 3 in parallel; includes a usage-limit stop |
+| Phase 3: integration (G07)                  | –                          | ~32 min (~17:34 to ~18:06)                                                                              | One `/goal` session                                                  |
+| Reviews, fixes and documentation            | check-ins                  | ~1 h 30 min (~17:00 to ~18:30)                                                                          | Coordinating session, in parallel with phases 2 and 3                |
+| **Total**                                   | ~5 h 40 min plus check-ins | ~2 h 40 min of wall-clock time after the planning session (~15:50 to ~18:30), plus the spikes during it | One working day from preparation to release                          |

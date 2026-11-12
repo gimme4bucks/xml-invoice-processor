@@ -17,10 +17,23 @@ asynchronously. Every document has a status: `Received`, `Processing`, `Complete
 
 ## Quick start
 
-Requirements: Docker with Compose v2 (2 GB of memory for the VM is enough), Node 22 and pnpm 10
+Requirements: Docker with Compose v2 and buildx 0.17 or newer (2 GB of memory for the VM is enough),
+Node 22 and pnpm 10
 (through Corepack) for the demo script.
 
-<!-- QUICKSTART: filled in from G07 -->
+```bash
+git clone https://github.com/gimme4bucks/xml-invoice-processor.git && cd xml-invoice-processor
+corepack enable && pnpm install
+docker compose --profile full up -d --build --wait   # Postgres, RabbitMQ, migrations, API, worker, mock IdP
+pnpm demo                                            # walks through every scenario against the running stack
+pnpm e2e                                             # the end-to-end tests, including RabbitMQ and Postgres outages
+docker compose --profile full down --volumes         # stop everything and remove the data
+```
+
+The first build takes a few minutes: it downloads the Peppol rules (sha256-checked) and compiles
+them. `pnpm demo` prints each step; it ends with `All scenarios behaved as expected.` The
+[examples](examples/README.md) show the same flows with curl, the demo clients and what each
+example invoice does.
 
 | What                   | Where                                                           |
 | ---------------------- | --------------------------------------------------------------- |
@@ -157,18 +170,19 @@ The guarantee: **an accepted document (202) is stored durably and will be proces
 invoice is never processed twice.** Delivery between the components is at-least-once, so every
 consumer is idempotent.
 
-| Failure                                             | What happens                                                                                                                                                      |
-| --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Client retries after a timeout                      | Same `Idempotency-Key` and same body: the original `202` again, with `Idempotent-Replayed: true`. Never a second document.                                        |
-| Same file sent again under a new key                | `409 DUPLICATE_DOCUMENT` (SHA-256 of the bytes, per organisation).                                                                                                |
-| RabbitMQ down during intake                         | No effect on the client: the API never talks to RabbitMQ. The outbox row waits and the relay publishes it when the broker is back.                                |
-| PostgreSQL down                                     | The API answers `503` with `Retry-After`; nothing was accepted, so the client retries with the same key. The worker requeues with backoff (1 s doubling to 30 s). |
-| Relay crashes after publishing, before marking      | The message is published again. The consumer sees the document's state and skips the duplicate.                                                                   |
-| Worker crashes mid-processing                       | The message was not acknowledged, so RabbitMQ redelivers it; the attempt resumes without a new event.                                                             |
-| Two deliveries of the same message at the same time | Optimistic concurrency on `(stream_id, version)`: exactly one wins, the other is skipped.                                                                         |
-| VAT service unavailable                             | `ProcessingAttemptFailed`, then a retry through the outbox and the delay queues (5 s, 30 s, 2 min). After 4 attempts: `Failed`.                                   |
-| A message that keeps failing (poison)               | `reject` with requeue counts towards the quorum queue's delivery limit (10); then it is dead-lettered at-least-once to the DLQ.                                   |
-| Business rules take too long                        | Timeout (30 s) in the worker thread: `Failed` with rule id `XIP-SCHEMATRON-TIMEOUT`, since the same document would time out again.                                |
+| Failure                                             | What happens                                                                                                                                                                                                                                                |
+| --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Client retries after a timeout                      | Same `Idempotency-Key` and same body: the original `202` again, with `Idempotent-Replayed: true`. Never a second document.                                                                                                                                  |
+| Same file sent again under a new key                | `409 DUPLICATE_DOCUMENT` (SHA-256 of the bytes, per organisation).                                                                                                                                                                                          |
+| RabbitMQ down during intake                         | No effect on the client: the API never talks to RabbitMQ. The outbox row waits and the relay publishes it when the broker is back.                                                                                                                          |
+| PostgreSQL down                                     | The API answers `503` within seconds, with `Retry-After`. The outcome is unknown (a write may still commit), so the client retries with the same key, which is always safe. The worker requeues with backoff (1 s doubling to 30 s).                        |
+| PostgreSQL down for more than about 2.5 minutes     | **Known gap.** The worker's messages use up their 10 deliveries and are dead-lettered; their documents stay `Received` or `Processing`. They are not lost (the DLQ and the outbox keep them), but nothing re-sends them yet: see [next steps](#next-steps). |
+| Relay crashes after publishing, before marking      | The message is published again. The consumer sees the document's state and skips the duplicate.                                                                                                                                                             |
+| Worker crashes mid-processing                       | The message was not acknowledged, so RabbitMQ redelivers it; the attempt resumes without a new event.                                                                                                                                                       |
+| Two deliveries of the same message at the same time | Optimistic concurrency on `(stream_id, version)`: exactly one wins, the other is skipped.                                                                                                                                                                   |
+| VAT service unavailable                             | `ProcessingAttemptFailed`, then a retry through the outbox and the delay queues (5 s, 30 s, 2 min). After 4 attempts: `Failed`.                                                                                                                             |
+| A message that keeps failing (poison)               | `reject` with requeue counts towards the quorum queue's delivery limit (10); then it is dead-lettered at-least-once to the DLQ.                                                                                                                             |
+| Business rules take too long                        | Timeout (30 s) in the worker thread: `Failed` with rule id `XIP-SCHEMATRON-TIMEOUT`, since the same document would time out again.                                                                                                                          |
 
 Events are append-only: a database trigger refuses `UPDATE`, `DELETE` and `TRUNCATE` on the
 events table. A migration also provides a least-privilege role (`xip_app`) with only `SELECT` and
@@ -246,8 +260,9 @@ order it was made, is in the [decision log](docs/decision-log.md).
 
 In rough order of value for production:
 
-1. **Operations for the unhappy path:** a DLQ replay tool, and an alert plus reconciliation for
-   documents that stay in `Processing` too long.
+1. **Operations for the unhappy path:** a DLQ re-drive command, and an alert plus a sweeper that
+   re-enqueues documents that stay `Received` or `Processing` too long (for example after a long
+   database outage).
 2. **Metrics and tracing** (OpenTelemetry): outbox lag, queue depth, processing time, failures per
    rule; trace context carried in the message headers.
 3. **Object storage:** an S3 adapter for the `BlobStore` port, written through the outbox so the
