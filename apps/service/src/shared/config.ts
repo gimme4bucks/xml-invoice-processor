@@ -7,9 +7,12 @@ const schema = z.object({
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
   DATABASE_URL: z.string().optional(),
   AMQP_URL: z.string().optional(),
-  AUTH_ISSUER: z.string().optional(),
-  AUTH_JWKS_URL: z.string().optional(),
-  AUTH_AUDIENCE: z.string().optional(),
+  // Required by the API (checked in remoteAuthOptions), not by the worker.
+  AUTH_ISSUER: z.string().min(1).optional(),
+  AUTH_JWKS_URL: z.url().optional(),
+  AUTH_AUDIENCE: z.string().min(1).optional(),
+  /** Requests per minute per organisation (per API instance). */
+  RATE_LIMIT_PER_MINUTE: z.coerce.number().int().positive().default(120),
 });
 
 export type AppConfig = z.infer<typeof schema>;
