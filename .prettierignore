@@ -2,5 +2,5 @@ pnpm-lock.yaml
 dist/
 coverage/
 apps/service/src/generated/
-apps/service/validation-artefacts/
+apps/service/validation-artifacts/
 docs/spikes/

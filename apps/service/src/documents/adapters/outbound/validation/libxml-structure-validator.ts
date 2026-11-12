@@ -8,7 +8,7 @@ import {
   StructureValidator,
 } from '../../../application/ports';
 import { type Libxml2, loadLibxml2, safeParseOptions } from './libxml2';
-import { UBL_NAMESPACES, validationArtefactsDir } from './ubl';
+import { UBL_NAMESPACES, validationArtifactsDir } from './ubl';
 
 /** Enough to fix a document; a broken 1 MB file would otherwise produce thousands of errors. */
 const MAX_ERRORS = 50;
@@ -30,9 +30,9 @@ export class LibxmlStructureValidator extends StructureValidator implements OnMo
     super();
   }
 
-  static async create(artefactsDir = validationArtefactsDir()): Promise<LibxmlStructureValidator> {
+  static async create(artifactsDir = validationArtifactsDir()): Promise<LibxmlStructureValidator> {
     const libxml = await loadLibxml2();
-    const xsdrt = path.join(artefactsDir, 'ubl-2.1', 'xsdrt');
+    const xsdrt = path.join(artifactsDir, 'ubl-2.1', 'xsdrt');
     const buffers: Record<string, Uint8Array> = {};
     for (const dir of ['common', 'maindoc']) {
       for (const file of fs.readdirSync(path.join(xsdrt, dir))) {

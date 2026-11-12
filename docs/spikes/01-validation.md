@@ -6,7 +6,7 @@ Question: Can a NestJS service on Node 22 validate incoming Peppol BIS Billing 3
 
 # Spike report: Peppol BIS 3 / EN 16931 validation in Node 22 (about 45 min)
 
-Spike dir: `<scratch>/spike-validation` (called SPIKE below). It contains `scripts/` (my code, package.json, node_modules), `downloads/<one subdir per artefact>/` (untrusted downloads, only fed to the validators) and `work/` (inputs, SEFs, raw outputs `*.out`).
+Spike dir: `<scratch>/spike-validation` (called SPIKE below). It contains `scripts/` (my code, package.json, node_modules), `downloads/<one subdir per artifact>/` (untrusted downloads, only fed to the validators) and `work/` (inputs, SEFs, raw outputs `*.out`).
 
 **Incident:** I briefly created 3 stray empty or test XML files in `<repo>` because a `cd` was missing: `xxe.xml`, `bad-totals.xml`, `bad-xsd-missing-issuedate.xml`. I deleted them straight away. `git status` there is clean again, and nothing else in that repo was touched.
 
@@ -19,7 +19,7 @@ Spike dir: `<scratch>/spike-validation` (called SPIKE below). It contains `scrip
   - **Official Peppol unit tests (3.0.22, 153 files): 686/687 pass.** *Verified.*
   - The one failure is a **real SaxonJS 2.7 bug:** `mod` on an `xs:integer` above 2^53 is computed in doubles. Example: `xs:integer('512108001245126199131475') mod 97` gives 83; the correct answer is 1. Only DE-R-019 and DE-R-020 hit this (IBAN check, flag=warning, German-to-German invoices only). The CEN rules have no `mod` at all, and the other Peppol checksums use small numbers.
   - Mitigation: drop or recheck DE-R-019/020 in TypeScript.
-- **Recommendation: go with SaxonJS plus the official artefacts.** The hand-coded BR-CO fallback isn't needed.
+- **Recommendation: go with SaxonJS plus the official artifacts.** The hand-coded BR-CO fallback isn't needed.
 - **Main caveat is performance on large invoices**, covered under Timings.
 
 ## Exact commands and code (all run)
@@ -81,7 +81,7 @@ Spike dir: `<scratch>/spike-validation` (called SPIKE below). It contains `scrip
 
 ## Pinned versions and URLs (all downloaded; sha256 shown)
 
-| Artefact | URL | sha256 | Use |
+| Artifact | URL | sha256 | Use |
 |---|---|---|---|
 | UBL 2.1 OS | https://docs.oasis-open.org/ubl/os-UBL-2.1/UBL-2.1.zip | 60b80d76…86ed | the `xsdrt/` folder (runtime xsd without documentation: common/ 628 KB plus maindoc) |
 | CEN | https://github.com/ConnectingEurope/eInvoicing-EN16931/releases/download/validation-1.3.16/en16931-ubl-1.3.16.zip | bafada01…da85 | `xslt/EN16931-UBL-validation.xslt` (sha256 39f9d282…fcbd) |
@@ -110,20 +110,20 @@ Spike dir: `<scratch>/spike-validation` (called SPIKE below). It contains `scrip
   - The licence terminates if you bring patent litigation.
 - **SchXslt2:** MIT.
 - **UBL 2.1 XSDs:** © OASIS. The OASIS notice allows copying and distribution "without restriction of any kind" as long as the copyright notice is kept, and the files are not modified. Committing them unmodified is fine.
-- **CEN artefacts:** EUPL-1.2 (copyleft, but it applies to the artefacts themselves). Committing them unmodified with the licence is fine. If you modify them, those modifications fall under EUPL. Using them as data in your service doesn't make your code EUPL (my inference).
-- **Peppol BIS artefacts: unclear.**
+- **CEN artifacts:** EUPL-1.2 (copyleft, but it applies to the artifacts themselves). Committing them unmodified with the licence is fine. If you modify them, those modifications fall under EUPL. Using them as data in your service doesn't make your code EUPL (my inference).
+- **Peppol BIS artifacts: unclear.**
   - The repo has no LICENSE file; the GitHub API reports `license: null`.
   - The .sch header says the CEN business terms are "reproduced with permission from CEN".
   - The BIS document says it "may not be modified, re-distribute[d], sold or repackaged… without the prior consent of OpenPeppol AISBL".
   - Committing it into a *public* repo is therefore a grey area. **Fetch it at build time from the pinned raw URL with a sha256 check** (or ask OpenPeppol). Don't patch it.
 
 ## Repo and layout recommendation
-- Commit the UBL `xsdrt` folder (about 640 KB) and the CEN 1.3.16 XSLT plus its EUPL licence, unmodified, under `validation-artefacts/`.
+- Commit the UBL `xsdrt` folder (about 640 KB) and the CEN 1.3.16 XSLT plus its EUPL licence, unmodified, under `validation-artifacts/`.
 - Fetch the Peppol .sch and SchXslt2 at build time with sha256 verification.
 - Don't commit the SEFs: they embed `buildDateTime` and a checksum `Σ`, so they aren't reproducible across builds. Generate them in the Docker build stage. xslt3 and its roughly 600 MB to 1 GB of compile RAM stay in that stage.
 - Suggested layout:
-  - `validation-artefacts/{ubl-2.1/xsdrt/{common,maindoc}, en16931-1.3.16/{EN16931-UBL-validation.xslt,LICENSE-EUPL-1.2.txt}, manifest.json (urls+sha256)}`
-  - `scripts/fetch-artefacts.ts`, `scripts/build-sef.sh`
+  - `validation-artifacts/{ubl-2.1/xsdrt/{common,maindoc}, en16931-1.3.16/{EN16931-UBL-validation.xslt,LICENSE-EUPL-1.2.txt}, manifest.json (urls+sha256)}`
+  - `scripts/fetch-artifacts.ts`, `scripts/build-sef.sh`
   - Build output: `dist/validation/*.sef.json`
   - `src/validation/{xsd.validator.ts, schematron.validator.ts, svrl.ts}`
 

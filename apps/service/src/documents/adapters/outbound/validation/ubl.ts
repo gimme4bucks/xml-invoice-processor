@@ -10,12 +10,12 @@ export const UBL_NAMESPACES = {
 } as const;
 
 /**
- * `apps/service/validation-artefacts`: the committed UBL XSDs and CEN XSLT plus the SEFs that
+ * `apps/service/validation-artifacts`: the committed UBL XSDs and CEN XSLT plus the SEFs that
  * `build:validation` writes to `generated/`. This file sits five levels below `apps/service`
- * both in `src/` and in `dist/`; `VALIDATION_ARTEFACTS_DIR` overrides it (e.g. in a container).
+ * both in `src/` and in `dist/`; `VALIDATION_ARTIFACTS_DIR` overrides it (e.g. in a container).
  */
-export function validationArtefactsDir(env: NodeJS.ProcessEnv = process.env): string {
+export function validationArtifactsDir(env: NodeJS.ProcessEnv = process.env): string {
   return (
-    env.VALIDATION_ARTEFACTS_DIR ?? path.resolve(__dirname, '../../../../../validation-artefacts')
+    env.VALIDATION_ARTIFACTS_DIR ?? path.resolve(__dirname, '../../../../../validation-artifacts')
   );
 }

@@ -27,7 +27,7 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     pnpm install --frozen-lockfile --filter @xip/service
 
 FROM deps AS build
-# build:validation (work package G02) is a bash script that downloads artefacts with curl.
+# build:validation (work package G02) is a bash script that downloads artifacts with curl.
 RUN apk add --no-cache bash curl unzip
 # prisma generate reads apps/service/tsconfig.json, which extends the base config.
 COPY tsconfig.base.json ./
@@ -35,11 +35,11 @@ COPY apps/service/ apps/service/
 # prisma.config.ts reads DATABASE_URL even for `generate`; no database is contacted.
 ARG DATABASE_URL=postgresql://build:build@localhost:5432/build
 RUN pnpm -F @xip/service prisma:generate
-# Compiles the Schematron SEFs into validation-artefacts/generated/. Only the SEFs are kept:
+# Compiles the Schematron SEFs into validation-artifacts/generated/. Only the SEFs are kept:
 # the downloads (the unlicensed Peppol .sch, SchXslt2) and the intermediate XSLT are build
 # inputs and are not shipped in the image.
 RUN pnpm -F @xip/service build:validation \
- && find apps/service/validation-artefacts/generated -mindepth 1 -maxdepth 1 ! -name '*.sef.json' \
+ && find apps/service/validation-artifacts/generated -mindepth 1 -maxdepth 1 ! -name '*.sef.json' \
       -exec rm -rf {} +
 RUN pnpm -F @xip/service build
 
@@ -62,7 +62,7 @@ WORKDIR /app/apps/service
 COPY --from=prod-deps /app/node_modules /app/node_modules
 COPY --from=prod-deps /app/apps/service/node_modules ./node_modules
 COPY --from=build /app/apps/service/dist ./dist
-COPY --from=build /app/apps/service/validation-artefacts ./validation-artefacts
+COPY --from=build /app/apps/service/validation-artifacts ./validation-artifacts
 COPY apps/service/package.json apps/service/prisma.config.ts ./
 COPY apps/service/prisma ./prisma
 COPY --chmod=0755 <<'EOF' /usr/local/bin/xip

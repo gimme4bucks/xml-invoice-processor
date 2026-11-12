@@ -1,6 +1,6 @@
 import { Test } from '@nestjs/testing';
 import { describe, expect, it } from 'vitest';
-import { peppolFixture, schematronArtefactsBuilt } from '../../../../../test/fixtures/peppol';
+import { peppolFixture, schematronArtifactsBuilt } from '../../../../../test/fixtures/peppol';
 import {
   BusinessRuleValidator,
   InvoiceMapper,
@@ -13,7 +13,7 @@ import { SchematronBusinessRuleValidator } from './schematron-business-rule-vali
 import { UblInvoiceMapper } from './ubl-invoice-mapper';
 import { validationProviders } from './validation-providers';
 
-describe.skipIf(!schematronArtefactsBuilt())('validationProviders', () => {
+describe.skipIf(!schematronArtifactsBuilt())('validationProviders', () => {
   it('binds the four ports to the real adapters and closes cleanly', async () => {
     const module = await Test.createTestingModule({
       providers: validationProviders({ VIES_INVALID_VAT_NUMBERS: 'NL009876543B01' }),

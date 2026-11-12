@@ -6,7 +6,7 @@ Status: Accepted (2026-11-12)
 
 The service needs a concrete invoice format. The AI first proposed a simplified XSD of our own; the developer steered us towards Peppol BIS Billing 3.0, which had come up in an earlier conversation. Peppol BIS Billing 3.0 is UBL 2.1 XML (`Invoice` and `CreditNote` are separate root elements) and a CIUS of EN 16931. Peppol is also a network (four-corner model, Access Points, AS4); we use only the format.
 
-The UBL 2.1 XSDs cover the structure. The business rules, such as the BR-CO calculation rules, are published as Schematron, which needs an XSLT 2/3 engine. We first planned to hand-code a subset of these rules, because the AI had said an XSLT 2 engine was hard to run in Node. The developer challenged that and asked about SaxonJS, and the AI corrected itself: SaxonJS runs as a library inside Node. A timeboxed spike then had to show that it runs the official artefacts, with the hand-coded subset as the fallback.
+The UBL 2.1 XSDs cover the structure. The business rules, such as the BR-CO calculation rules, are published as Schematron, which needs an XSLT 2/3 engine. We first planned to hand-code a subset of these rules, because the AI had said an XSLT 2 engine was hard to run in Node. The developer challenged that and asked about SaxonJS, and the AI corrected itself: SaxonJS runs as a library inside Node. A timeboxed spike then had to show that it runs the official artifacts, with the hand-coded subset as the fallback.
 
 ## Decision
 
@@ -23,7 +23,7 @@ The UBL 2.1 XSDs cover the structure. The business rules, such as the BR-CO calc
 - **Mapping.** There is one mapping from UBL to our domain model.
 - **Licensing:**
   - SaxonJS is free but proprietary. It is only a dependency, never vendored, and gets a THIRD-PARTY-NOTICES entry.
-  - The UBL XSDs and the CEN artefacts are committed unmodified.
+  - The UBL XSDs and the CEN artifacts are committed unmodified.
   - The Peppol `.sch` has no clear licence, so it is fetched at build time from a pinned URL with a sha256 check.
   - SEFs are not committed, because they are not reproducible. They are generated in the Docker build stage.
 
@@ -44,7 +44,7 @@ Where each layer runs is decided in [ADR 0002](0002-split-validation-xsd-sync-sc
 - Memory cost:
   - Importing SaxonJS adds about 83 MB to a process; RSS is about 210–240 MB after warm runs.
   - Compiling the SEFs needs 600 MB–1 GB of RAM in the build stage.
-- We take on a proprietary runtime dependency and a Peppol artefact with an unclear licence, both handled as described above.
+- We take on a proprietary runtime dependency and a Peppol artifact with an unclear licence, both handled as described above.
 - Adding `CreditNote` support later takes a schema, a mapper and a strategy.
 
 ## Evidence
@@ -61,4 +61,4 @@ Source: [Spike 01](../spikes/01-validation.md).
 - Support for `CreditNote` (weekend work).
 - Other formats (for example SI-UBL) through an anti-corruption layer to a canonical model.
 - Optionally, re-check DE-R-019/020 in TypeScript.
-- Optionally, ask OpenPeppol about redistributing its artefacts.
+- Optionally, ask OpenPeppol about redistributing its artifacts.

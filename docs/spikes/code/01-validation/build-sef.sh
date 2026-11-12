@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build-time compilation of the validation artefacts to SaxonJS SEF files.
+# Build-time compilation of the validation artifacts to SaxonJS SEF files.
 # usage: build-sef.sh <cen-ubl-1.3.16 xslt> <peppol PEPPOL-EN16931-UBL.sch> <schxslt2 transpile.xsl> <outdir>
 set -euo pipefail
 CEN_XSLT=$1; PEPPOL_SCH=$2; SCHXSLT2=$3; OUT=$4

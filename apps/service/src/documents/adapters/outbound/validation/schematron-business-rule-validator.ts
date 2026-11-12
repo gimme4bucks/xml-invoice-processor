@@ -6,10 +6,10 @@ import type { RuleViolation } from '../../../domain/document-events';
 import { BusinessRuleValidator } from '../../../application/ports';
 import { toRuleViolations } from './svrl';
 import type { SchematronWorkerData, SvrlFinding } from './schematron.worker';
-import { validationArtefactsDir } from './ubl';
+import { validationArtifactsDir } from './ubl';
 
 export interface SchematronOptions {
-  artefactsDir?: string;
+  artifactsDir?: string;
   /** Worker threads; each holds its own copy of both SEFs (about 100 MB or more). */
   poolSize?: number;
   /** Maximum run time of one invoice, both rule sets together. */
@@ -46,7 +46,7 @@ export class SchematronBusinessRuleValidator
 
   constructor(options: SchematronOptions = {}) {
     super();
-    const generated = path.join(options.artefactsDir ?? validationArtefactsDir(), 'generated');
+    const generated = path.join(options.artifactsDir ?? validationArtifactsDir(), 'generated');
     this.sefPaths = ['cen-en16931-ubl.sef.json', 'peppol-en16931-ubl.sef.json'].map((file) =>
       path.join(generated, file),
     );

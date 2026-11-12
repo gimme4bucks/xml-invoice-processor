@@ -1,11 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { peppolFixture, schematronArtefactsBuilt } from '../../../../../test/fixtures/peppol';
+import { peppolFixture, schematronArtifactsBuilt } from '../../../../../test/fixtures/peppol';
 import {
   SchematronBusinessRuleValidator,
   TIMEOUT_RULE_ID,
 } from './schematron-business-rule-validator';
 
-const built = schematronArtefactsBuilt();
+const built = schematronArtifactsBuilt();
 if (!built) console.warn('Schematron specs skipped: run pnpm -F @xip/service build:validation');
 
 // Runs the real official rule sets; the first invoice per thread includes loading the SEFs.
@@ -75,9 +75,9 @@ describe.skipIf(!built)('SchematronBusinessRuleValidator', { timeout: 60_000 }, 
   });
 });
 
-describe('SchematronBusinessRuleValidator without artefacts', () => {
+describe('SchematronBusinessRuleValidator without artifacts', () => {
   it('fails at construction and says how to build them', () => {
-    expect(() => new SchematronBusinessRuleValidator({ artefactsDir: '/nonexistent' })).toThrow(
+    expect(() => new SchematronBusinessRuleValidator({ artifactsDir: '/nonexistent' })).toThrow(
       /build:validation/,
     );
   });

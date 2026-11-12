@@ -129,7 +129,7 @@ Copy `.env.example` to `.env` (repo root and `apps/service/`) for local work.
   - Pin CEN 1.3.16 together with Peppol 3.0.22.
   - Only `fatal` flags reject.
   - Filter the false DE-R-019/020 warnings (a SaxonJS bug with big integers in `mod`).
-- **Artefact licences:**
+- **Artifact licences:**
   - The Peppol `.sch` has no licence: fetch it at build time from a pinned URL with a sha256 check, and never commit it.
   - UBL 2.1 XSDs (OASIS) and the CEN XSLT (EUPL-1.2) may be committed unmodified, together with their licences.
   - SaxonJS may be a dependency but must never be vendored; credit it in THIRD-PARTY-NOTICES.
@@ -145,10 +145,10 @@ Copy `.env.example` to `.env` (repo root and `apps/service/`) for local work.
 
 ## Spike code
 
-Copied (without dependencies and downloaded artefacts) to `docs/spikes/code/`. Use it as a
+Copied (without dependencies and downloaded artifacts) to `docs/spikes/code/`. Use it as a
 starting point, not as production code:
 
 - `01-validation/`: libxml2-wasm XSD (`lib/xsd-libxml2.mjs`), SaxonJS Schematron (`lib/schematron.mjs`),
-  SEF build (`build-sef.sh`). Artefact URLs and sha256 sums are in `docs/spikes/01-validation.md`.
+  SEF build (`build-sef.sh`). Artifact URLs and sha256 sums are in `docs/spikes/01-validation.md`.
 - `02b-rabbitmq-amqplib/`: the chosen RabbitMQ adapter (`src/amqp/*`) and its crash tests (`test/*`).
 - `02a-rabbitmq-golevelup/`: the alternative that was not chosen (kept as evidence).
