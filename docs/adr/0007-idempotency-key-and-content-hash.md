@@ -34,7 +34,10 @@ The developer's requirement is that an invoice must never be processed twice. Ou
 ## Consequences
 
 - Clients must send an `Idempotency-Key`, and a retry with the same key is always safe.
-- Two different situations both produce a 409: a key reused with other content, and a known file sent under a new key. The Problem Details codes that tell them apart: TODO.
+- Two different situations both produce a 409, told apart by the Problem Details `code`. Both carry `existingDocumentId`:
+  - `IDEMPOTENCY_KEY_REUSED`: the key was already used for other content.
+  - `DUPLICATE_DOCUMENT`: this exact file was already submitted under another key.
+- A replay (same key, same content) returns the original response, `202` with the same `documentId`, plus the header `Idempotent-Replayed: true`. Clients poll `GET /documents/{id}` for the current status.
 - Tests cover:
   - In e2e:
     - the same key returns the same ID;

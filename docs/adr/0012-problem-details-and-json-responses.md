@@ -47,4 +47,27 @@ n/a
 
 ## Follow-ups
 
-- The catalogue of error codes: TODO, to be defined during implementation (work package G05).
+- The catalogue of error codes, settled during implementation (work packages G05 and G07). The source of truth is `apps/service/src/shared/problem-details/problem-codes.ts`, which also feeds the OpenAPI description. Codes are only ever added, never renamed or reused.
+
+| Status | `code`                   | Meaning                                                                                                                                                                                                    |
+| ------ | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 400    | `INVALID_REQUEST`        | A path, query or header parameter is missing or invalid; see `errors`.                                                                                                                                     |
+| 401    | `UNAUTHENTICATED`        | The bearer token is missing, malformed, expired or not issued for this API.                                                                                                                                |
+| 403    | `INSUFFICIENT_SCOPE`     | The token is valid but lacks the scope this operation requires.                                                                                                                                            |
+| 404    | `DOCUMENT_NOT_FOUND`     | No document with this id exists for your organisation.                                                                                                                                                     |
+| 404    | `NOT_FOUND`              | No such route.                                                                                                                                                                                             |
+| 409    | `IDEMPOTENCY_KEY_REUSED` | The Idempotency-Key was already used for a document with different content; see `existingDocumentId`.                                                                                                      |
+| 409    | `DUPLICATE_DOCUMENT`     | This exact file was already submitted under another Idempotency-Key; see `existingDocumentId`.                                                                                                             |
+| 413    | `PAYLOAD_TOO_LARGE`      | The request body exceeds the maximum document size.                                                                                                                                                        |
+| 415    | `UNSUPPORTED_MEDIA_TYPE` | Send the document as `Content-Type: application/xml` without a Content-Encoding.                                                                                                                           |
+| 415    | `UNSUPPORTED_CHARSET`    | Only UTF-8 is accepted (Content-Type charset, XML declaration and bytes).                                                                                                                                  |
+| 422    | `DOCUMENT_REJECTED`      | The document failed the structural checks (well-formedness, DOCTYPE ban, document type, UBL 2.1 XSD); see `reason` and `errors`.                                                                           |
+| 422    | `NOT_A_PARTY`            | Your organisation's Peppol id is neither the supplier's nor the customer's EndpointID.                                                                                                                     |
+| 422    | `INVALID_PEPPOL_ID`      | An EndpointID in the invoice is not a valid Peppol participant id (`0000:value`).                                                                                                                          |
+| 422    | `MISSING_ENDPOINT_ID`    | The supplier or customer has no `cbc:EndpointID` with a `schemeID` (Peppol participant id).                                                                                                                |
+| 429    | `RATE_LIMITED`           | Rate limit for your organisation exceeded; retry after `Retry-After` seconds.                                                                                                                              |
+| 500    | `INTERNAL_ERROR`         | Something went wrong on our side. Quote the correlation id when reporting it.                                                                                                                              |
+| 503    | `AUTH_UNAVAILABLE`       | The identity provider's signing keys could not be fetched; retry later.                                                                                                                                    |
+| 503    | `SERVICE_UNAVAILABLE`    | A backing service (the database) is temporarily unavailable. The document may or may not have been stored: retry after `Retry-After` seconds with the same Idempotency-Key and body, which is always safe. |
+
+A `DomainError` keeps its own code only when that code is in the catalogue; any other domain error guards an invariant, so it is our bug and becomes `500 INTERNAL_ERROR`. Every response also carries the request's `correlationId`.

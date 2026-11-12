@@ -1,13 +1,286 @@
 # xml-invoice-processor
 
 A backend that receives **Peppol BIS Billing 3.0 invoices (UBL 2.1 XML)** from B2B systems over
-HTTP, validates them, stores them without ever losing an accepted document, and processes them
-asynchronously, with a status per document (`Received`, `Processing`, `Completed`, `Failed`).
+HTTP, validates them, stores them so that an accepted document is never lost, and processes them
+asynchronously. Every document has a status: `Received`, `Processing`, `Completed` or `Failed`.
 
-> **Status:** work in progress. The foundation and walking skeleton are in place; the real
-> adapters are being built as separate work packages (see [docs/goals](docs/goals/)).
-> This README is completed with the first release.
+- [Quick start](#quick-start)
+- [API](#api)
+- [Architecture](#architecture)
+- [Reliability: what happens when something fails](#reliability-what-happens-when-something-fails)
+- [Key decisions and trade-offs](#key-decisions-and-trade-offs)
+- [Assumptions](#assumptions)
+- [Security](#security)
+- [Testing, CI/CD and monitoring](#testing-cicd-and-monitoring)
+- [Next steps](#next-steps)
+- [AI usage](#ai-usage)
 
-- Architecture decisions: [docs/adr](docs/adr/)
-- Spikes (measured evidence behind the decisions): [docs/spikes](docs/spikes/)
-- Working agreements for humans and AI agents: [CLAUDE.md](CLAUDE.md)
+## Quick start
+
+Requirements: Docker with Compose v2 and buildx 0.17 or newer (2 GB of memory for the VM is enough),
+Node 22 and pnpm 10
+(through Corepack) for the demo script.
+
+```bash
+git clone https://github.com/gimme4bucks/xml-invoice-processor.git && cd xml-invoice-processor
+corepack enable && pnpm install
+docker compose --profile full up -d --build --wait   # Postgres, RabbitMQ, migrations, API, worker, mock IdP
+pnpm demo                                            # walks through every scenario against the running stack
+pnpm e2e                                             # the end-to-end tests, including RabbitMQ and Postgres outages
+docker compose --profile full down --volumes         # stop everything and remove the data
+```
+
+The first build takes a few minutes: it downloads the Peppol rules (sha256-checked) and compiles
+them. `pnpm demo` prints each step; it ends with `All scenarios behaved as expected.` The
+[examples](examples/README.md) show the same flows with curl, the demo clients and what each
+example invoice does.
+
+| What                   | Where                                                           |
+| ---------------------- | --------------------------------------------------------------- |
+| API                    | http://localhost:3000                                           |
+| OpenAPI (Swagger UI)   | http://localhost:3000/docs, JSON at `/openapi.json`             |
+| Mock identity provider | http://localhost:4000 (`POST /token`, `/.well-known/jwks.json`) |
+| RabbitMQ management    | http://localhost:15672 (user `xip`, password `xip`)             |
+
+The demo clients and their secrets in `docker-compose.yml` are for local use only.
+
+**Local development** (Node processes against Dockerised Postgres and RabbitMQ):
+
+```bash
+corepack enable && pnpm install
+cp .env.example .env && cp .env.example apps/service/.env
+pnpm infra:up                                  # Postgres 18 + RabbitMQ 4.4
+pnpm -F @xip/service prisma:generate && pnpm -F @xip/service prisma:migrate
+pnpm -F @xip/service build:validation          # fetches and compiles the Schematron rules
+pnpm verify                                    # format, lint, types, architecture rules, unit tests, build
+pnpm test:contract                             # the port contracts against real Postgres and RabbitMQ
+```
+
+## API
+
+All endpoints need an OAuth2 bearer token (client credentials). The organisation always comes from
+the token, never from the URL or the body.
+
+| Method and path               | Scope              | Purpose                                                                                                                  |
+| ----------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| `POST /documents`             | `documents:submit` | Submit one invoice (`application/xml`, UTF-8, at most 1 MiB, `Idempotency-Key` required). Answers `202` with `Location`. |
+| `GET /documents`              | `documents:read`   | Your organisation's documents, newest first (`status`, `limit`, `cursor`).                                               |
+| `GET /documents/{id}`         | `documents:read`   | Status, direction (purchase or sales), attempts and failure reason.                                                      |
+| `GET /documents/{id}/result`  | `documents:read`   | The processing result (canonical JSON invoice) once `Completed`.                                                         |
+| `GET /documents/{id}/history` | `documents:read`   | The document's event stream: the audit trail.                                                                            |
+
+Errors are [RFC 9457 Problem Details](https://www.rfc-editor.org/rfc/rfc9457) with a stable
+`code` that clients can branch on, plus a `correlationId`. The full catalogue is in the OpenAPI
+description and in [ADR 0012](docs/adr/0012-problem-details-and-json-responses.md).
+
+```http
+HTTP/1.1 409 Conflict
+Content-Type: application/problem+json
+
+{ "type": "urn:xip:problem:DUPLICATE_DOCUMENT", "title": "Duplicate document", "status": 409,
+  "code": "DUPLICATE_DOCUMENT", "detail": "…", "existingDocumentId": "…", "correlationId": "…" }
+```
+
+## Architecture
+
+Two processes from one image: the **API** (intake and queries) and the **worker** (outbox relay
+and message consumer). Both are NestJS applications built as ports and adapters around a pure
+TypeScript domain.
+
+```mermaid
+flowchart LR
+  client[B2B client] -- "POST /documents<br/>Bearer token + Idempotency-Key" --> api
+  idp[Identity provider<br/>mock in dev] -. JWKS .-> api
+
+  subgraph api [API process]
+    direction TB
+    guard[JWT guard, rate limit] --> xsd[Structure check<br/>DOCTYPE ban + UBL 2.1 XSD]
+    xsd --> submit[SubmitDocument]
+  end
+
+  subgraph pg [PostgreSQL]
+    direction TB
+    events[(events<br/>append-only)]
+    views[(document_views)]
+    blobs[(blobs)]
+    outbox[(outbox)]
+    idem[(idempotency_records)]
+  end
+
+  submit -- "one transaction" --> pg
+  api -- "GET status / result / history" --> views
+
+  subgraph worker [Worker process]
+    direction TB
+    relay[Outbox relay]
+    consumer[ProcessDocument] --> rules[EN 16931 + Peppol Schematron<br/>SaxonJS in worker threads]
+    rules --> vies[VAT number check<br/>fake VIES]
+  end
+
+  outbox --> relay
+  relay -- "publish with confirms" --> mq[[RabbitMQ<br/>quorum queues, retry delay queues, DLQ]]
+  mq --> consumer
+  consumer -- "events + view + result + retry outbox row,<br/>one transaction" --> pg
+```
+
+**The life of a document:**
+
+1. **Intake (synchronous, API).** The token is verified and the body read (only after
+   authentication). The structure is checked: no DOCTYPE, the root must be a UBL 2.1 `Invoice`,
+   and the UBL 2.1 XSD must pass. The direction (purchase or sales) is derived from the token's
+   Peppol ID and the invoice's supplier and customer EndpointIDs.
+2. **Store (one transaction).** The idempotency record, the `DocumentReceived` event, the original
+   XML, the read model row and an outbox message are written together. Only after the commit does
+   the client get `202 Accepted`.
+3. **Publish (worker).** The outbox relay publishes pending rows to RabbitMQ with publisher
+   confirms and marks them published only after the confirm.
+4. **Process (worker).** The consumer records `ProcessingStarted`, runs the official EN 16931 and
+   Peppol BIS 3.0 business rules, verifies the counterparty's VAT number, stores the canonical
+   JSON result and records `DocumentProcessed`, or `DocumentProcessingFailed` with the rule IDs.
+   The message is acknowledged only after that transaction has committed.
+
+```mermaid
+stateDiagram-v2
+  [*] --> Received: POST accepted (202)
+  Received --> Processing: ProcessingStarted (attempt 1)
+  Processing --> Completed: rules pass, VAT number valid
+  Processing --> Failed: fatal rule violation, invalid VAT number, timeout
+  Processing --> Processing: VAT service unavailable, retry after 5 s / 30 s / 2 min
+  Processing --> Failed: still unavailable after 4 attempts
+  Completed --> [*]
+  Failed --> [*]
+```
+
+**Code layout** (enforced by dependency-cruiser in CI):
+
+```
+apps/service/src/
+  documents/domain/            pure TypeScript: Document aggregate, events, value objects
+  documents/application/       commands, queries, ports, outbox relay
+  documents/adapters/inbound/  HTTP controller, RabbitMQ consumer, relay loop
+  documents/adapters/outbound/ postgres (Prisma), rabbitmq (amqplib), validation, vies, in-memory
+  app/                         composition root: the only place where ports are bound to adapters
+  shared/                      config, auth, Problem Details, logging, rate limiting
+apps/mock-idp/                 OAuth2 client-credentials issuer for development, demo and e2e
+```
+
+## Reliability: what happens when something fails
+
+The guarantee: **an accepted document (202) is stored durably and will be processed; the same
+invoice is never processed twice.** Delivery between the components is at-least-once, so every
+consumer is idempotent.
+
+| Failure                                             | What happens                                                                                                                                                                                                                                                |
+| --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Client retries after a timeout                      | Same `Idempotency-Key` and same body: the original `202` again, with `Idempotent-Replayed: true`. Never a second document.                                                                                                                                  |
+| Same file sent again under a new key                | `409 DUPLICATE_DOCUMENT` (SHA-256 of the bytes, per organisation).                                                                                                                                                                                          |
+| RabbitMQ down during intake                         | No effect on the client: the API never talks to RabbitMQ. The outbox row waits and the relay publishes it when the broker is back.                                                                                                                          |
+| PostgreSQL down                                     | The API answers `503` within seconds, with `Retry-After`. The outcome is unknown (a write may still commit), so the client retries with the same key, which is always safe. The worker requeues with backoff (1 s doubling to 30 s).                        |
+| PostgreSQL down for more than about 2.5 minutes     | **Known gap.** The worker's messages use up their 10 deliveries and are dead-lettered; their documents stay `Received` or `Processing`. They are not lost (the DLQ and the outbox keep them), but nothing re-sends them yet: see [next steps](#next-steps). |
+| Relay crashes after publishing, before marking      | The message is published again. The consumer sees the document's state and skips the duplicate.                                                                                                                                                             |
+| Worker crashes mid-processing                       | The message was not acknowledged, so RabbitMQ redelivers it; the attempt resumes without a new event.                                                                                                                                                       |
+| Two deliveries of the same message at the same time | Optimistic concurrency on `(stream_id, version)`: exactly one wins, the other is skipped.                                                                                                                                                                   |
+| VAT service unavailable                             | `ProcessingAttemptFailed`, then a retry through the outbox and the delay queues (5 s, 30 s, 2 min). After 4 attempts: `Failed`.                                                                                                                             |
+| A message that keeps failing (poison)               | `reject` with requeue counts towards the quorum queue's delivery limit (10); then it is dead-lettered at-least-once to the DLQ.                                                                                                                             |
+| Business rules take too long                        | Timeout (30 s) in the worker thread: `Failed` with rule id `XIP-SCHEMATRON-TIMEOUT`, since the same document would time out again.                                                                                                                          |
+
+Events are append-only: a database trigger refuses `UPDATE`, `DELETE` and `TRUNCATE` on the
+events table. A migration also provides a least-privilege role (`xip_app`) with only `SELECT` and
+`INSERT` on it; the contract tests run as that role.
+
+## Key decisions and trade-offs
+
+Each decision has an ADR with the alternatives that were considered. The full reasoning, in the
+order it was made, is in the [decision log](docs/decision-log.md).
+
+| Decision                                                                                                                      | Why, and what it costs                                                                                                                                                                                   |
+| ----------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [Peppol BIS 3.0 with the official rules (SaxonJS)](docs/adr/0001-peppol-bis-billing-3-official-rules-saxonjs.md)              | A real standard with real rule IDs instead of a home-made schema. Costs a build step and an XSLT 3 engine; SaxonJS is free but not open source.                                                          |
+| [Split validation](docs/adr/0002-split-validation-xsd-sync-schematron-async.md)                                               | XSD at intake (fast, immediate 422), business rules in the worker: the Peppol rules take up to ~10 s on an 800-line invoice and block the event loop. A client learns about a rule violation by polling. |
+| [Event sourcing in PostgreSQL](docs/adr/0003-event-sourcing-in-postgresql.md)                                                 | A full audit trail and natural idempotency, without a second database to run. A dedicated event store (KurrentDB) was analysed and deferred.                                                             |
+| [Transactional outbox, idempotent consumer](docs/adr/0004-transactional-outbox-and-idempotent-consumer.md)                    | No dual write between Postgres and RabbitMQ. Costs a relay with a small publish delay, and duplicates that the consumer must absorb.                                                                     |
+| [No saga](docs/adr/0005-no-saga.md)                                                                                           | One aggregate, one process: a state machine on the aggregate is enough.                                                                                                                                  |
+| [Own RabbitMQ adapter](docs/adr/0006-own-rabbitmq-adapter.md)                                                                 | Two spikes compared a library and our own adapter under crash tests; both lost nothing; ours keeps every guarantee visible in a few hundred lines of our own code.                                       |
+| [Idempotency-Key plus content hash](docs/adr/0007-idempotency-key-and-content-hash.md)                                        | Safe client retries, and a byte-identical resubmission is caught too. A business-level duplicate check (invoice number) is deferred.                                                                     |
+| [OAuth2 client credentials, organisation from the token](docs/adr/0008-oauth2-client-credentials-and-organisation-scoping.md) | B2B machine clients; tenant isolation that a URL or body cannot override. Another organisation's document is a 404.                                                                                      |
+| [Prisma for data access](docs/adr/0009-data-access-with-prisma.md)                                                            | The tool the developer knows best, so the fastest to deliver. It stays behind the ports, so swapping it is local.                                                                                        |
+| [Hexagonal architecture, enforced](docs/adr/0010-hexagonal-architecture-with-enforced-dependency-rules.md)                    | The domain is framework-free and every adapter has an in-memory twin that passes the same contract tests.                                                                                                |
+| [Documents in PostgreSQL behind a `BlobStore` port](docs/adr/0011-document-storage-in-postgresql-behind-blobstore-port.md)    | S3 was optional. With a 1 MiB limit, Postgres keeps the document in the same transaction as its event. An S3 adapter is a later step.                                                                    |
+| [Problem Details, JSON](docs/adr/0012-problem-details-and-json-responses.md)                                                  | One error format with stable codes.                                                                                                                                                                      |
+
+## Assumptions
+
+- Clients are **B2B systems of organisations**, not people, so they authenticate with OAuth2 client
+  credentials. The identity provider is mocked; production would use a real one.
+- The concept is sized for about **1,000 documents a day**. That shaped the choices for one
+  Postgres, an in-process rate limit and documents stored in the database.
+- Only the Peppol BIS 3.0 **Invoice** is accepted. A `CreditNote` is rejected as "not supported yet".
+- The submitting organisation is a party to the invoice: its Peppol ID is the supplier's or the
+  customer's EndpointID. That decides whether it is a sales or a purchase invoice. Otherwise: `422 NOT_A_PARTY`.
+- **"Processing"** means: the official EN 16931 and Peppol business rules, a VAT number check of the
+  counterparty (a fake VIES adapter that can be unavailable or say "invalid"), and mapping to a
+  canonical JSON invoice, which is the stored **result**.
+- A duplicate is a **byte-identical file** per organisation. Recognising the same invoice in a
+  different file needs a canonical model first and is deliberately left out.
+
+## Security
+
+- JWTs are verified against the IdP's JWKS: issuer, audience, expiry, and only `ES256`. Scopes per
+  route; a route without a scope declaration fails closed.
+- The organisation is taken from the token only. Another organisation's document answers `404`.
+- XML: any DOCTYPE is rejected, external entities are never resolved and the parser never touches
+  the network (`NONET | NO_XXE`). The body is read only after authentication, at most 1 MiB, UTF-8 only.
+- Rate limit per organisation (120 requests a minute by default), helmet headers, no CORS.
+- Logs contain IDs only: never XML content, amounts, VAT numbers or tokens (the `Authorization`
+  header is redacted). Every log line carries the correlation id.
+- No secrets in the repository; the containers run as a non-root user on a read-only filesystem.
+- Dependencies are pinned exactly, must be at least 3 days old, install scripts are blocked by
+  default, `pnpm audit` runs in CI and GitHub Actions are pinned to commit SHAs.
+
+## Testing, CI/CD and monitoring
+
+- **Unit tests:** the domain state machine (every state against every command), the command
+  handlers with deterministic fault injection (crashes between commit and ack, relay crashes),
+  validation against official-style fixtures, and the HTTP API with supertest.
+- **Contract tests:** one suite per port runs against both the in-memory adapters and the real
+  PostgreSQL and RabbitMQ adapters.
+- **Walking skeleton:** the API and worker wiring end to end with in-memory adapters.
+- **End-to-end tests:** the full Docker Compose stack with real tokens, including RabbitMQ and
+  PostgreSQL outages.
+- **CI** (GitHub Actions): format, lint, types, architecture rules, audit, unit tests and build;
+  the contract tests against service containers; the e2e tests against the compose stack.
+- **Release:** multi-arch images (amd64 and arm64) to GHCR with an SBOM and provenance. A `v*.*.*`
+  tag publishes semver tags; Dependabot proposes updates.
+- **Monitoring today:** structured JSON logs (pino); a correlation id per request that is echoed
+  in the response, stored with every event and carried in the message headers into the worker;
+  `GET /health`; and the RabbitMQ management UI (queue depths, the DLQ). Metrics and tracing are a
+  next step.
+
+## Next steps
+
+In rough order of value for production:
+
+1. **Operations for the unhappy path:** a DLQ re-drive command, and an alert plus a sweeper that
+   re-enqueues documents that stay `Received` or `Processing` too long (for example after a long
+   database outage).
+2. **Metrics and tracing** (OpenTelemetry): outbox lag, queue depth, processing time, failures per
+   rule; trace context carried in the message headers.
+3. **Object storage:** an S3 adapter for the `BlobStore` port, written through the outbox so the
+   transaction guarantee stays ([ADR 0011](docs/adr/0011-document-storage-in-postgresql-behind-blobstore-port.md)).
+4. **Credit notes**, then a canonical model with an anti-corruption layer for other formats, which
+   also enables a business-level duplicate check.
+5. **Scaling out:** a shared rate-limit store (Redis), and more worker replicas (the relay and the
+   consumer are already safe to run several times).
+6. **The real VIES service** with a timeout and a circuit breaker; webhooks so clients need not poll.
+7. Clarify the licence of the Peppol Schematron before publishing images that contain the compiled rules.
+
+## AI usage
+
+I built this with Claude Code (Claude Opus 5.5): a coordinating session for the design, the
+foundation, reviews and documentation, subagents for the spikes, and one `/goal` session per work
+package in its own git worktree. Every work package came in as a pull request that had to pass CI
+and a review against the decisions before it was merged.
+
+The details are in [docs/ai-usage.md](docs/ai-usage.md): the tools, where AI was used, what I
+changed or corrected, which suggestions I deliberately did not adopt, how the output was verified,
+and the time spent.
