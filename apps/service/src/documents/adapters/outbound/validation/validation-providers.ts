@@ -10,7 +10,7 @@ import { FakeViesVerifier } from '../vies/fake-vies-verifier';
 import { LibxmlStructureValidator } from './libxml-structure-validator';
 import { SchematronBusinessRuleValidator } from './schematron-business-rule-validator';
 import { UblInvoiceMapper } from './ubl-invoice-mapper';
-import { validationArtefactsDir } from './ubl';
+import { validationArtifactsDir } from './ubl';
 
 const envSchema = z.object({
   SCHEMATRON_POOL_SIZE: z.coerce.number().int().positive().default(2),
@@ -20,7 +20,7 @@ const envSchema = z.object({
 /**
  * The real validation adapters plus the VIES fake, for the composition root (G07). Settings come
  * from the environment:
- * - `VALIDATION_ARTEFACTS_DIR` (default `apps/service/validation-artefacts`);
+ * - `VALIDATION_ARTIFACTS_DIR` (default `apps/service/validation-artifacts`);
  * - `SCHEMATRON_POOL_SIZE` (default 2) and `SCHEMATRON_TIMEOUT_MS` (default 30000);
  * - `VIES_UNAVAILABLE_RATE`, `VIES_INVALID_VAT_NUMBERS`, `VIES_UNAVAILABLE_TIMES_PER_NUMBER`.
  *
@@ -29,18 +29,18 @@ const envSchema = z.object({
  */
 export function validationProviders(env: NodeJS.ProcessEnv = process.env): Provider[] {
   const config = envSchema.parse(env);
-  const artefactsDir = validationArtefactsDir(env);
+  const artifactsDir = validationArtifactsDir(env);
   return [
     {
       provide: StructureValidator,
-      useFactory: () => LibxmlStructureValidator.create(artefactsDir),
+      useFactory: () => LibxmlStructureValidator.create(artifactsDir),
     },
     { provide: InvoiceMapper, useFactory: () => UblInvoiceMapper.create() },
     {
       provide: BusinessRuleValidator,
       useFactory: () =>
         new SchematronBusinessRuleValidator({
-          artefactsDir,
+          artifactsDir,
           poolSize: config.SCHEMATRON_POOL_SIZE,
           timeoutMs: config.SCHEMATRON_TIMEOUT_MS,
         }),

@@ -6,7 +6,7 @@ coverage/
 .env.*
 !.env.example
 apps/service/src/generated/
-apps/service/validation-artefacts/generated/
+apps/service/validation-artifacts/generated/
 .DS_Store
 .idea/
 .vscode/

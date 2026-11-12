@@ -36,8 +36,8 @@ jobs:
         id: sef-cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: apps/service/validation-artefacts/generated/*.sef.json
-          key: sef-${{ hashFiles('apps/service/scripts/validation/**', 'apps/service/validation-artefacts/manifest.json', 'pnpm-lock.yaml') }}
+          path: apps/service/validation-artifacts/generated/*.sef.json
+          key: sef-${{ hashFiles('apps/service/scripts/validation/**', 'apps/service/validation-artifacts/manifest.json', 'pnpm-lock.yaml') }}
       - if: steps.sef-cache.outputs.cache-hit != 'true'
         run: pnpm -F @xip/service build:validation
       - run: pnpm audit --prod --audit-level high

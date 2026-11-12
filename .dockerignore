@@ -10,7 +10,7 @@ docs
 **/.env
 **/.env.*
 apps/service/src/generated
-apps/service/validation-artefacts/generated
+apps/service/validation-artifacts/generated
 
 # Tests are not part of an image.
 apps/*/test

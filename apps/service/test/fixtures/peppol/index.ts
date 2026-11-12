@@ -23,8 +23,8 @@ export function peppolFixture(name: PeppolFixture): Buffer {
  * Whether `build:validation` has produced the Schematron SEFs. CI's verify job does not run it
  * yet, so specs that need them are skipped there instead of failing.
  */
-export function schematronArtefactsBuilt(): boolean {
-  const generated = path.resolve(__dirname, '../../../validation-artefacts/generated');
+export function schematronArtifactsBuilt(): boolean {
+  const generated = path.resolve(__dirname, '../../../validation-artifacts/generated');
   return ['cen-en16931-ubl.sef.json', 'peppol-en16931-ubl.sef.json'].every((file) =>
     fs.existsSync(path.join(generated, file)),
   );

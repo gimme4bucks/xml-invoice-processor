@@ -1,12 +1,12 @@
 # Third-party notices
 
-This project uses the third-party software and artefacts below to validate Peppol BIS Billing 3.0
+This project uses the third-party software and artifacts below to validate Peppol BIS Billing 3.0
 invoices ([ADR 0001](docs/adr/0001-peppol-bis-billing-3-official-rules-saxonjs.md)). npm packages
 under permissive open-source licences are listed in `pnpm-lock.yaml`; this file covers the
 components whose licences ask for a notice or that are not ordinary dependencies.
 
-`apps/service/validation-artefacts/manifest.json` lists the source URL and sha256 of every
-artefact.
+`apps/service/validation-artifacts/manifest.json` lists the source URL and sha256 of every
+artifact.
 
 ## SaxonJS (`saxon-js`, `xslt3`), Saxonica Ltd
 
@@ -33,14 +33,14 @@ The full licence text is in `node_modules/saxon-js/LICENSE.txt` after `pnpm inst
 
 ## OASIS Universal Business Language (UBL) 2.1
 
-The runtime schemas in `apps/service/validation-artefacts/ubl-2.1/xsdrt/` are copied unmodified
+The runtime schemas in `apps/service/validation-artifacts/ubl-2.1/xsdrt/` are copied unmodified
 from the UBL 2.1 OASIS Standard. Copyright © OASIS Open 2001-2013. All Rights Reserved. The OASIS
-notice is reproduced in `apps/service/validation-artefacts/ubl-2.1/NOTICE.txt`.
+notice is reproduced in `apps/service/validation-artifacts/ubl-2.1/NOTICE.txt`.
 
-## CEN EN 16931 validation artefacts 1.3.16 (EUPL-1.2)
+## CEN EN 16931 validation artifacts 1.3.16 (EUPL-1.2)
 
-`apps/service/validation-artefacts/en16931-ubl-1.3.16/EN16931-UBL-validation.xslt` is copied
-unmodified from the CEN/TC 434 validation artefacts release `validation-1.3.16`
+`apps/service/validation-artifacts/en16931-ubl-1.3.16/EN16931-UBL-validation.xslt` is copied
+unmodified from the CEN/TC 434 validation artifacts release `validation-1.3.16`
 (https://github.com/ConnectingEurope/eInvoicing-EN16931). It is licensed under the European Union
 Public Licence 1.2; the licence text is in `LICENSE-EUPL-1.2.txt` next to it.
 
@@ -73,7 +73,7 @@ Used at build time only, to transpile the Peppol Schematron to XSLT. It is downl
 `PEPPOL-EN16931-UBL.sch` is published by OpenPeppol AISBL without a licence. It is therefore not
 committed to this repository: `fetch-and-compile.sh` downloads it at build time from a pinned URL,
 verifies its sha256 and compiles it, unmodified, into a SEF under
-`apps/service/validation-artefacts/generated/` (gitignored). The business terms in it are
+`apps/service/validation-artifacts/generated/` (gitignored). The business terms in it are
 "reproduced with permission from CEN".
 
 ## libxml2-wasm (MIT)

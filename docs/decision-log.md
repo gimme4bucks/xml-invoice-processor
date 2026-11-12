@@ -400,7 +400,7 @@ Agenda:
 - Build: do not commit the SEFs, because they are not reproducible. Generate them in a Docker build stage, which peaks at 600 MB–1 GB of RAM.
 - Licences:
   - SaxonJS is free but proprietary, so it is used only as a dependency, never vendored, with a THIRD-PARTY-NOTICES entry.
-  - The UBL 2.1 XSDs (OASIS) and the CEN artefacts (EUPL-1.2) may be committed unmodified.
+  - The UBL 2.1 XSDs (OASIS) and the CEN artifacts (EUPL-1.2) may be committed unmodified.
   - The Peppol `.sch` has no licence, which is a grey area. So it is fetched at build time from a pinned URL with a sha256 check.
 - Incident: the spike agent accidentally created three test files in the project folder and deleted them straight away. A check afterwards found the folder empty and `git status` clean.
 
@@ -646,7 +646,7 @@ Agenda:
   - G03 Persistence (Prisma);
   - G04 Messaging (our own RabbitMQ adapter and the relay).
 - Wave 2:
-  - G02 Validation: XSD, Schematron with piscina, the artefacts, the UBL mapper and the VIES fake;
+  - G02 Validation: XSD, Schematron with piscina, the artifacts, the UBL mapper and the VIES fake;
   - G05 HTTP and security: endpoints, auth, Problem Details, limits, OpenAPI and the mock IdP;
   - G06 Delivery: Dockerfile, Compose, `release.yml`, the e2e CI job and Dependabot.
 - Phase 3: G07 Integration (wiring, the worker pipeline, retries via the outbox, all e2e tests green, the demo script and sample invoices), then a review, then `v1.0.0`.
