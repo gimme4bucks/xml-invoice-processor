@@ -5,10 +5,8 @@
 #
 # Stages: base (node + pnpm) -> deps (full install) -> build -> prod-deps -> runtime.
 
-# Exact tag plus digest; Dependabot (docker) proposes updates.
-ARG NODE_IMAGE=node:22.23.5-alpine3.24@sha256:1314fb30ec37592d5845e5a160d522c0e680972aa534549940b8d73bde88481a
-
-FROM ${NODE_IMAGE} AS base
+# Exact tag plus digest; Dependabot (docker) proposes updates (both FROM lines).
+FROM node:22.23.5-alpine3.24@sha256:1314fb30ec37592d5845e5a160d522c0e680972aa534549940b8d73bde88481a AS base
 ENV PNPM_HOME=/pnpm \
     COREPACK_ENABLE_DOWNLOAD_PROMPT=0 \
     CI=true
@@ -36,7 +34,7 @@ COPY tsconfig.base.json ./
 COPY apps/service/ apps/service/
 # prisma.config.ts reads DATABASE_URL even for `generate`; no database is contacted.
 ARG DATABASE_URL=postgresql://build:build@localhost:5432/build
-RUN DATABASE_URL="$DATABASE_URL" pnpm -F @xip/service prisma:generate
+RUN pnpm -F @xip/service prisma:generate
 # Guarded until G02 adds the script; the directory always exists so the runtime COPY works.
 RUN if node -e "process.exit(require('./apps/service/package.json').scripts['build:validation'] ? 0 : 1)"; then \
       pnpm -F @xip/service build:validation; \
@@ -52,7 +50,7 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     pnpm install --frozen-lockfile --prod --filter @xip/service --config.public-hoist-pattern=prisma \
  && node -e "require.resolve('prisma/package.json', { paths: ['/app/apps/service'] })"
 
-FROM ${NODE_IMAGE} AS runtime
+FROM node:22.23.5-alpine3.24@sha256:1314fb30ec37592d5845e5a160d522c0e680972aa534549940b8d73bde88481a AS runtime
 # CHECKPOINT_DISABLE: no update checks or telemetry from the Prisma CLI.
 ENV NODE_ENV=production \
     CHECKPOINT_DISABLE=1
