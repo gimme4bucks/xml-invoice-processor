@@ -18,7 +18,7 @@ The reasoning behind each choice is in the [decision log](decision-log.md) and t
 - **A coordinating session.** I worked through the design with this session in a planning session on 2026-11-12, from about 11:40 to 15:50. It:
   - kept the decision log as we went (in Dutch; now translated);
   - launched the spikes;
-  - takes on the foundation phase, the reviews of the parallel work, and the documentation.
+  - built the foundation phase, started and monitored the `/goal` sessions, reviewed and merged their pull requests, and wrote the documentation.
 - **Subagents for the spikes.** Each spike wrote a report, which you can find in [spikes/](spikes/):
   - a validation spike (XSD and Schematron);
   - two RabbitMQ client spikes, which ran in parallel with the same spec and the same tests.
@@ -49,9 +49,19 @@ The reasoning behind each choice is in the [decision log](decision-log.md) and t
 - whether SaxonJS can run the official EN 16931 and Peppol rules in Node ([spike 01](spikes/01-validation.md));
 - which RabbitMQ client approach gives the guarantees we need ([spike 02a](spikes/02a-rabbitmq-golevelup.md) and [spike 02b](spikes/02b-rabbitmq-amqplib.md)).
 
-**Documentation.** Claude drafted the decision log, the ADRs and this file from my Dutch decision log and the spike reports. TODO: describe my review and edits.
+**Documentation.** Claude drafted the decision log, the ADRs and this file from my Dutch decision log and the spike reports.
 
-**Implementation.** TODO. The plan is that the coordinating session builds the foundation (phase 1) and `/goal` sessions build G01 to G07.
+- A subagent wrote the first ADR drafts. The coordinating session checked them against the decisions and corrected several, for example: NestJS decorators are allowed in the application layer (ADR 0010), the relay's polling interval (ADR 0004), the delivery limit of 10 (ADR 0006) and the S3 approach (ADR 0011).
+- I read the drafts and had personal details removed before they went into the public repository.
+- The README was written at the end, from the merged code and the ADRs.
+
+**Implementation.** In three phases:
+
+1. **Foundation** (the coordinating session): the monorepo, CI, the domain and the ports, in-memory adapters, a contract test suite per port, and a walking skeleton that proves the API and worker wiring end to end. `CLAUDE.md` holds the rules every later session follows.
+2. **Work packages G01–G06** (`/goal` sessions, two waves of three in parallel). Each package has a goal file with owned paths, scope, acceptance criteria and a `/goal` condition ([docs/goals](goals/)). The coordinating session started each session headless in its own git worktree, watched its progress, and reviewed its pull request.
+3. **Integration (G07)**: wiring the real adapters, the end-to-end tests against the full Docker Compose stack, and the demo.
+
+The sessions never pushed to `main` or merged themselves. Every package arrived as a pull request that CI had to pass.
 
 ## AI output I changed or corrected
 
@@ -89,18 +99,25 @@ The reasoning behind each choice is in the [decision log](decision-log.md) and t
 - **Integration risk.**
   - I was worried that wiring the parallel work together would not go smoothly.
   - We added contract tests per port and a walking skeleton to the foundation phase.
-- **Implementation phase:** TODO.
+- **A bug in the foundation, found by a work package.** The coordinating session's first version restarted a processing attempt when a message was redelivered after a transient failure, which multiplied the retries. The G01 session found it while writing the crash tests and fixed it: the aggregate now knows whether an attempt is in progress (`attemptInProgress`).
+- **Requeue during an outage (found in review).** The G04 consumer requeued a failed message immediately. During a database outage, a healthy message would then use up its 10 deliveries within milliseconds and land in the dead-letter queue. The coordinating session added a backoff before the requeue (1 s, doubling, at most 30 s).
+- **Postgres down meant 500, not 503.** The HTTP package (G05) could not map a database outage, because the ports had no error type for it. Review turned this into an explicit task for G07: a `PersistenceUnavailableError` that the API maps to `503` with `Retry-After`.
+- **Choices by the agents that were kept after review**, because they were better than the brief:
+  - G05: an unreachable identity provider gives `503`, not `401`, so clients retry instead of assuming their credentials are wrong; and the body is read only after authentication.
+  - G02: a business-rule timeout fails the document permanently instead of retrying, since the same document would time out again.
+  - G06: the e2e runs used their own Compose project name, so they could not stop the infrastructure that the other sessions were using.
 
 ## Suggestions I deliberately did not adopt
 
-- **Dutch documentation with English code.** I chose English for everything: docs, code, commits and API messages. TODO: reason.
+- **Dutch documentation with English code.** I chose English for everything: docs, code, commits and API messages.
 - **Kysely (or Drizzle) for data access.** I chose Prisma, because it is the tool I know best and the fastest way for me to deliver. A Kysely adapter may follow as an experiment, to show the ports and adapters at work ([ADR 0009](adr/0009-data-access-with-prisma.md)).
 - **A business-level duplicate check on invoice number, right away.** I deferred it, for three reasons:
   - In production, customers send these fields in different ways, so a field mapping has to come first.
   - The schema we validate against is our own assumption.
   - Building the mapping layer means making assumptions about a part of the system nobody asked for.
 - **Running the business rules synchronously in the API.** Not adopted, after the spike (see above).
-- **Implementation phase:** TODO.
+- **Branch protection on `main`.** Not set up: every session uses the same GitHub account, which is an admin, so it would enforce nothing. The rule "never push to `main`, never merge yourself" is in `CLAUDE.md`, and auto mode refused a force push that one session tried.
+- **A cleaner way to load libxml2-wasm** (`module.ignoreDynamic` in the SWC config) was suggested by the G02 session but left for later; the current loader works and is tested, at the cost of one `ExperimentalWarning` at startup.
 
 ## How I verified AI output
 
@@ -157,7 +174,14 @@ The reasoning behind each choice is in the [decision log](decision-log.md) and t
 - One spike agent still created three test files in the project folder because of a missing `cd`, and deleted them straight away.
 - A check afterwards found the folder empty and `git status` clean.
 
-**Implementation phase:** TODO. Note what CI and review actually caught.
+**What actually caught problems during the implementation:**
+
+- **The agents' own tests** caught the foundation bug above (G01).
+- **Review by the coordinating session** caught the requeue gap (G04) and the missing 503 (G05), and checked every PR's diff against its owned paths and the shared contracts.
+- **CI** ran on every pull request against the merge with `main`. A locally green `pnpm verify` after each merge confirmed the integration.
+- **The usage limit** of the account stopped the second wave halfway through. Because every session works in its own worktree, nothing was lost: the sessions were resumed with their own context (`claude --resume`) and finished their work. Lesson: three parallel sessions use up a usage limit quickly.
+
+During the implementation I delegated layer 4, the merge decision, to the coordinating session: it merged after its review and a green CI.
 
 ## Time spent
 

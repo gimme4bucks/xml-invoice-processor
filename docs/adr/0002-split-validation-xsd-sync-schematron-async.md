@@ -71,4 +71,8 @@ From [Spike 01](../spikes/01-validation.md), measured warm on Node 22.14:
 
 ## Follow-ups
 
-- Worker pool size and the timeout value: TODO.
+- Worker pool size and timeout, settled during implementation (work package G02):
+  - `SCHEMATRON_POOL_SIZE=2` threads, each holding both compiled rule sets (100 MB or more per thread).
+  - `SCHEMATRON_TIMEOUT_MS=30000` per invoice. The timeout measures the run itself: a small semaphore hands an invoice to the pool only when a thread is free, so waiting behind other invoices never counts.
+  - A timeout is a permanent `Failed` with rule id `XIP-SCHEMATRON-TIMEOUT`. The same document would time out again, so retrying would only use up the delivery limit and leave it in `Processing`.
+- SaxonJS is loaded only inside the worker threads, and the pool starts on the first validation, so the API process never pays for it. Both processes do check at startup that the compiled rule sets exist.
