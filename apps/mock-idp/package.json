@@ -4,9 +4,9 @@
   "description": "Minimal OAuth2 client-credentials token issuer standing in for a real identity provider (dev, demo, e2e only).",
   "license": "UNLICENSED",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run",
     "start": "node --enable-source-maps dist/main.js"
   },
   "dependencies": {
