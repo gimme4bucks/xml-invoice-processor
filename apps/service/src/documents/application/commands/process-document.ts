@@ -87,14 +87,17 @@ export class ProcessDocumentHandler implements ICommandHandler<
     }
 
     const invoice = this.mapper.map(original.content);
-    const counterparty = document.direction === 'purchase' ? invoice.supplier : invoice.customer;
+    // The counterparty: on a purchase invoice the supplier, on a sales invoice the customer.
+    const role = document.direction === 'purchase' ? 'supplier' : 'customer';
+    const counterparty = invoice[role];
     if (counterparty.vatNumber) {
       try {
         const verdict = await this.vat.verify(counterparty.vatNumber);
         if (verdict === 'invalid') {
+          // No VAT number in the message: failure reasons are stored, returned and may be logged.
           return this.failPermanently(document, input, {
             code: 'VAT_NUMBER_INVALID',
-            message: `VAT number ${counterparty.vatNumber} of the counterparty does not exist`,
+            message: `The ${role}'s VAT number does not exist according to the VAT service`,
           });
         }
       } catch (error) {
@@ -129,19 +132,21 @@ export class ProcessDocumentHandler implements ICommandHandler<
       if (history.length === 0) return undefined;
       const document = Document.fromHistory(history.map((stored) => stored.event));
       if (document.isFinal || document.attempts > input.attempt) return undefined;
-      // attempts === input.attempt: a redelivery after a crash mid-attempt; resume without a new event.
-      if (document.attempts < input.attempt) {
-        document.startProcessing(this.clock.now());
-        const stored = await this.events.append(
-          document.id,
-          document.version,
-          document.pendingEvents,
-          this.metadata(input),
-          tx,
-        );
-        document.markPersisted();
-        await this.views.upsert(buildView([...history, ...stored]), tx);
+      if (document.attempts === input.attempt) {
+        // A redelivery. If the worker crashed mid-attempt, resume it without a new event; if the
+        // attempt already ended, its retry message (same transaction) carries the next one.
+        return document.attemptInProgress ? document : undefined;
       }
+      document.startProcessing(this.clock.now());
+      const stored = await this.events.append(
+        document.id,
+        document.version,
+        document.pendingEvents,
+        this.metadata(input),
+        tx,
+      );
+      document.markPersisted();
+      await this.views.upsert(buildView([...history, ...stored]), tx);
       return document;
     });
   }
@@ -191,7 +196,8 @@ export class ProcessDocumentHandler implements ICommandHandler<
     return this.uow.run(async (tx) => {
       const history = await this.events.load(document.id);
       const current = Document.fromHistory(history.map((stored) => stored.event));
-      if (current.isFinal || current.attempts !== document.attempts) return 'skipped';
+      // Another delivery of the same attempt finished it first.
+      if (current.attempts !== document.attempts || !current.attemptInProgress) return 'skipped';
       const override = await change(current, tx);
       const stored = await this.events.append(
         current.id,

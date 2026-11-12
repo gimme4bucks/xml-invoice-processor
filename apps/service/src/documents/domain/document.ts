@@ -1,13 +1,45 @@
-import type { DocumentEvent, DocumentReceived, FailureReason } from './document-events';
+import type { DocumentEvent, FailureReason } from './document-events';
 import { DomainError } from './errors';
-import type { DocumentStatus, DocumentType, InvoiceDirection } from './value-objects';
+import type {
+  ContentHash,
+  DocumentStatus,
+  DocumentType,
+  IdempotencyKey,
+  InvoiceDirection,
+  OrganisationId,
+} from './value-objects';
 
-/** Default number of processing attempts before a transient failure becomes permanent. */
+/**
+ * Processing attempts before a transient failure (VAT service unavailable) becomes permanent:
+ * the first attempt plus one retry per delay queue (5 s, 30 s, 2 min; see `RoutingKeys.retry`).
+ */
 export const MAX_PROCESSING_ATTEMPTS = 4;
+
+export interface ReceiveDocument {
+  documentId: string;
+  organisationId: OrganisationId;
+  idempotencyKey: IdempotencyKey;
+  contentHash: ContentHash;
+  documentType: DocumentType;
+  direction: InvoiceDirection;
+}
 
 /**
  * Event-sourced aggregate for one received document. State only changes through `apply`,
  * both when rehydrating from history and when recording new events.
+ *
+ * Lifecycle (status in brackets):
+ *
+ *   receive ──▶ [Received] ──startProcessing──▶ [Processing, attempt n running]
+ *   attempt n running ──complete──────────────▶ [Completed]
+ *   attempt n running ──fail──────────────────▶ [Failed]
+ *   attempt n running ──recordTransientFailure─▶ [Processing, attempt n ended]  (n < max)
+ *                                            └─▶ [Failed]                      (n = max)
+ *   attempt n ended ────startProcessing───────▶ [Processing, attempt n+1 running]
+ *
+ * Anything else is refused with a DomainError: `DOCUMENT_FINAL` once Completed or Failed,
+ * `ATTEMPT_IN_PROGRESS` when starting while an attempt runs, and `NO_ATTEMPT_IN_PROGRESS` when
+ * ending an attempt that is not running.
  */
 export class Document {
   private state!: {
@@ -17,6 +49,8 @@ export class Document {
     direction: InvoiceDirection;
     status: DocumentStatus;
     attempts: number;
+    /** True from ProcessingStarted until that attempt completes, fails or fails transiently. */
+    attemptInProgress: boolean;
     failure?: FailureReason;
   };
   /** Number of events already persisted; the expected version for the next append. */
@@ -25,9 +59,18 @@ export class Document {
 
   private constructor() {}
 
-  static receive(input: Omit<DocumentReceived, 'type' | 'receivedAt'>, now: Date): Document {
+  static receive(input: ReceiveDocument, now: Date): Document {
     const document = new Document();
-    document.record({ type: 'DocumentReceived', ...input, receivedAt: now.toISOString() });
+    document.record({
+      type: 'DocumentReceived',
+      documentId: input.documentId,
+      organisationId: input.organisationId.value,
+      idempotencyKey: input.idempotencyKey.value,
+      contentHash: input.contentHash.value,
+      documentType: input.documentType,
+      direction: input.direction,
+      receivedAt: now.toISOString(),
+    });
     return document;
   }
 
@@ -56,8 +99,13 @@ export class Document {
   get status(): DocumentStatus {
     return this.state.status;
   }
+  /** Number of the latest attempt (0 before the first one started). */
   get attempts(): number {
     return this.state.attempts;
+  }
+  /** False once the latest attempt ended; a redelivered message for it has nothing left to do. */
+  get attemptInProgress(): boolean {
+    return this.state.attemptInProgress;
   }
   get failure(): FailureReason | undefined {
     return this.state.failure;
@@ -81,6 +129,12 @@ export class Document {
 
   startProcessing(now: Date): void {
     this.assertNotFinal('start processing');
+    if (this.state.attemptInProgress) {
+      throw new DomainError(
+        'ATTEMPT_IN_PROGRESS',
+        `Cannot start processing: attempt ${this.state.attempts} is still in progress`,
+      );
+    }
     this.record({
       type: 'ProcessingStarted',
       attempt: this.state.attempts + 1,
@@ -89,7 +143,7 @@ export class Document {
   }
 
   /**
-   * Records a transient failure of the current attempt. Returns `retry` when another attempt
+   * Records a transient failure of the running attempt. Returns `retry` when another attempt
    * is allowed; otherwise the document fails permanently and `exhausted` is returned.
    */
   recordTransientFailure(
@@ -97,7 +151,7 @@ export class Document {
     now: Date,
     maxAttempts = MAX_PROCESSING_ATTEMPTS,
   ): 'retry' | 'exhausted' {
-    this.assertProcessing('record a failed attempt');
+    this.assertAttemptInProgress('record a failed attempt');
     if (this.state.attempts >= maxAttempts) {
       this.fail(
         { ...reason, message: `${reason.message} (gave up after ${maxAttempts} attempts)` },
@@ -115,12 +169,13 @@ export class Document {
   }
 
   complete(resultKey: string, now: Date): void {
-    this.assertProcessing('complete');
+    this.assertAttemptInProgress('complete');
     this.record({ type: 'DocumentProcessed', resultKey, completedAt: now.toISOString() });
   }
 
+  /** A permanent failure of the running attempt (e.g. a business rule or VAT number). */
   fail(reason: FailureReason, now: Date): void {
-    this.assertNotFinal('fail');
+    this.assertAttemptInProgress('fail');
     this.record({ type: 'DocumentProcessingFailed', reason, failedAt: now.toISOString() });
   }
 
@@ -139,22 +194,27 @@ export class Document {
           direction: event.direction,
           status: 'Received',
           attempts: 0,
+          attemptInProgress: false,
         };
         return;
       case 'ProcessingStarted':
         this.state.status = 'Processing';
         this.state.attempts = event.attempt;
+        this.state.attemptInProgress = true;
         return;
       case 'ProcessingAttemptFailed':
         // Stays Processing: the next attempt is scheduled.
+        this.state.attemptInProgress = false;
         this.state.failure = event.reason;
         return;
       case 'DocumentProcessed':
         this.state.status = 'Completed';
+        this.state.attemptInProgress = false;
         this.state.failure = undefined;
         return;
       case 'DocumentProcessingFailed':
         this.state.status = 'Failed';
+        this.state.attemptInProgress = false;
         this.state.failure = event.reason;
         return;
     }
@@ -166,11 +226,12 @@ export class Document {
     }
   }
 
-  private assertProcessing(action: string): void {
-    if (this.state.status !== 'Processing') {
+  private assertAttemptInProgress(action: string): void {
+    this.assertNotFinal(action);
+    if (!this.state.attemptInProgress) {
       throw new DomainError(
-        'DOCUMENT_NOT_PROCESSING',
-        `Cannot ${action}: document is ${this.state.status}`,
+        'NO_ATTEMPT_IN_PROGRESS',
+        `Cannot ${action}: no processing attempt is in progress (document is ${this.state.status})`,
       );
     }
   }
