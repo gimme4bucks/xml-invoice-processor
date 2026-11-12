@@ -5,6 +5,7 @@ HTTP, validates them, stores them so that an accepted document is never lost, an
 asynchronously. Every document has a status: `Received`, `Processing`, `Completed` or `Failed`.
 
 - [Quick start](#quick-start)
+- [Check that it really ran](#check-that-it-really-ran)
 - [API](#api)
 - [Architecture](#architecture)
 - [Reliability: what happens when something fails](#reliability-what-happens-when-something-fails)
@@ -55,6 +56,66 @@ pnpm -F @xip/service build:validation          # fetches and compiles the Schema
 pnpm verify                                    # format, lint, types, architecture rules, unit tests, build
 pnpm test:contract                             # the port contracts against real Postgres and RabbitMQ
 ```
+
+## Check that it really ran
+
+`pnpm demo` checks every response itself and exits with a non-zero code when one is wrong. These
+are four ways to see for yourself that the documents really went through Postgres, RabbitMQ and
+the worker, against the running stack from the quick start.
+
+**1. Stop the worker.** Processing depends on the worker, and nothing is lost while it is down:
+
+```bash
+docker compose stop worker
+pnpm demo                    # stops at "Received (attempts: 0)" for the first invoice
+docker compose start worker  # in a second terminal, within 90 seconds
+```
+
+While the worker is down, the document waits in the outbox table, because the outbox relay runs in
+the worker. RabbitMQ stays empty in the meantime:
+
+```bash
+docker compose exec postgres psql -U xip -d xip -c "select routing_key, created_at from outbox where published_at is null"
+```
+
+Once the worker is up, the demo continues and ends as usual. In the history it prints, the gap
+between `DocumentReceived` and the first `ProcessingStarted` is the time the worker was down. If
+you wait longer than 90 seconds, the demo gives up with `… is still Received`, but the document is
+still processed as soon as the worker starts.
+
+**2. The event history in Postgres.** Every document has its own event stream. Its document ID is
+the one the demo prints:
+
+```bash
+docker compose exec postgres psql -U xip -d xip -c "
+  select d.document_id, d.status, d.attempts,
+         string_agg(e.type, ' > ' order by e.version) as history
+  from document_views d join events e on e.stream_id = d.document_id
+  group by d.document_id, d.status, d.attempts, d.received_at
+  order by d.received_at"
+```
+
+The API returns the same history at `GET /documents/{id}/history`, which you can also call from the
+Swagger UI with a token from the mock IdP (see the [examples](examples/README.md)).
+
+**3. RabbitMQ management** (http://localhost:15672, user `xip`, password `xip`):
+
+- Under _Queues_, `documents.process` carries every document, and its message rates rise while the demo runs.
+- The `documents.retry.*` queues receive the VIES retries.
+- `documents.dlq` stays empty.
+
+The retry queues are named after the production delays (5 s, 30 s and 2 min). Compose shortens them
+to 1, 2 and 5 seconds (`RETRY_DELAYS_MS`, shown as `x-message-ttl` on each queue) to keep the demo
+quick.
+
+**4. The API logs.** This shows every request from the demo as a JSON line with its correlation id:
+
+```bash
+docker compose logs -f api | grep -v /health
+```
+
+The worker logs only at startup and on errors, not for every message. Its work shows in the event
+history and in RabbitMQ instead.
 
 ## API
 
