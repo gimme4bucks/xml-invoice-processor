@@ -100,7 +100,7 @@ export const problemCodes = {
     status: 503,
     title: 'Service unavailable',
     description:
-      'A backing service (the database) is temporarily unavailable. Nothing was stored; retry after `Retry-After` seconds with the same Idempotency-Key.',
+      'A backing service (the database) is temporarily unavailable. The document may or may not have been stored: retry after `Retry-After` seconds with the same Idempotency-Key and body, which is always safe.',
   },
 } as const satisfies Record<string, { status: number; title: string; description: string }>;
 
