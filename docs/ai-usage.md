@@ -65,7 +65,7 @@ The sessions never pushed to `main` or merged themselves. Every package arrived 
 
 - **Invoice format.**
   - Claude proposed a simplified invoice XSD of our own.
-  - I steered towards Peppol BIS Billing 3.0, which had come up in an earlier conversation.
+  - I steered towards Peppol BIS Billing 3.0, which had come up in my earlier conversation with the CTO.
   - Claude then worked out what that meant: the UBL 2.1 XSDs, the official rule IDs, and deriving purchase vs sales from the token.
 - **"An XSLT 2 engine is hard to run in Node."** That claim was too strong.
   - I asked about SaxonJS, which runs as a library in Node.
@@ -92,7 +92,7 @@ The sessions never pushed to `main` or merged themselves. Every package arrived 
   - The first spike measured that on RabbitMQ 4.4, nack does not count: a poison message was redelivered about 24k times in 30 s. The second spike confirmed it.
   - We use `reject` instead ([ADR 0006](adr/0006-own-rabbitmq-adapter.md)).
 - **Event store.**
-  - I asked for a dedicated event store (KurrentDB) to be analysed seriously and documented, not just dismissed.
+  - I asked for a dedicated event store (KurrentDB) to be analyzed seriously and documented, not just dismissed.
   - That analysis, including when it would become the right choice, is in [ADR 0003](adr/0003-event-sourcing-in-postgresql.md).
 - **Integration risk.**
   - I was worried that wiring the parallel work together would not go smoothly.
