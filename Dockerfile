@@ -35,11 +35,12 @@ COPY apps/service/ apps/service/
 # prisma.config.ts reads DATABASE_URL even for `generate`; no database is contacted.
 ARG DATABASE_URL=postgresql://build:build@localhost:5432/build
 RUN pnpm -F @xip/service prisma:generate
-# Guarded until G02 adds the script; the directory always exists so the runtime COPY works.
-RUN if node -e "process.exit(require('./apps/service/package.json').scripts['build:validation'] ? 0 : 1)"; then \
-      pnpm -F @xip/service build:validation; \
-    fi \
- && mkdir -p apps/service/validation-artefacts
+# Compiles the Schematron SEFs into validation-artefacts/generated/. Only the SEFs are kept:
+# the downloads (the unlicensed Peppol .sch, SchXslt2) and the intermediate XSLT are build
+# inputs and are not shipped in the image.
+RUN pnpm -F @xip/service build:validation \
+ && find apps/service/validation-artefacts/generated -mindepth 1 -maxdepth 1 ! -name '*.sef.json' \
+      -exec rm -rf {} +
 RUN pnpm -F @xip/service build
 
 # Production dependencies only. The Prisma CLI is still installed: @prisma/client declares it
