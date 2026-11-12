@@ -21,9 +21,10 @@ x-service: &service
   read_only: true
   init: true
 
-# ADAPTERS: API and worker are separate processes, so the stack needs the real adapters.
+# ADAPTERS is fixed, not read from .env: API and worker are separate processes, so in-memory
+# adapters would give each its own memory and no document would ever be processed.
 x-service-env: &service-env
-  ADAPTERS: ${ADAPTERS:-real}
+  ADAPTERS: real
   LOG_LEVEL: ${LOG_LEVEL:-info}
   DATABASE_URL: postgresql://${POSTGRES_USER:-xip}:${POSTGRES_PASSWORD:-xip}@postgres:5432/${POSTGRES_DB:-xip}
   AMQP_URL: amqp://${RABBITMQ_USER:-xip}:${RABBITMQ_PASSWORD:-xip}@rabbitmq:5672
