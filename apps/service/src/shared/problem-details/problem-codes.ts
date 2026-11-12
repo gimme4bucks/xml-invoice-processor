@@ -75,6 +75,12 @@ export const problemCodes = {
     description:
       'An EndpointID in the invoice is not a valid Peppol participant id (`0000:value`).',
   },
+  MISSING_ENDPOINT_ID: {
+    status: 422,
+    title: 'Missing EndpointID',
+    description:
+      'The supplier or customer has no `cbc:EndpointID` with a `schemeID` (Peppol participant id).',
+  },
   RATE_LIMITED: {
     status: 429,
     title: 'Too many requests',
@@ -89,6 +95,12 @@ export const problemCodes = {
     status: 503,
     title: 'Authentication unavailable',
     description: "The identity provider's signing keys could not be fetched; retry later.",
+  },
+  SERVICE_UNAVAILABLE: {
+    status: 503,
+    title: 'Service unavailable',
+    description:
+      'A backing service (the database) is temporarily unavailable. Nothing was stored; retry after `Retry-After` seconds with the same Idempotency-Key.',
   },
 } as const satisfies Record<string, { status: number; title: string; description: string }>;
 

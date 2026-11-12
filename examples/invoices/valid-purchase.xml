@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Written for this project (not an OpenPeppol example). A valid Peppol BIS Billing 3.0 invoice
+     from 0106:33333333 to 0106:11111111: a purchase invoice for organisation 0106:11111111.
+     Two VAT rates (21% and 9%) and a prepaid amount, so the amount due differs from the total. -->
+<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"
+         xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2"
+         xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2">
+  <cbc:CustomizationID>urn:cen.eu:en16931:2017#compliant#urn:fdc:peppol.eu:2017:poacc:billing:3.0</cbc:CustomizationID>
+  <cbc:ProfileID>urn:fdc:peppol.eu:2017:poacc:billing:01:1.0</cbc:ProfileID>
+  <cbc:ID>GOS-77812</cbc:ID>
+  <cbc:IssueDate>2026-11-05</cbc:IssueDate>
+  <cbc:DueDate>2026-11-19</cbc:DueDate>
+  <cbc:InvoiceTypeCode>380</cbc:InvoiceTypeCode>
+  <cbc:DocumentCurrencyCode>EUR</cbc:DocumentCurrencyCode>
+  <cbc:BuyerReference>ACME-PURCH-2026-118</cbc:BuyerReference>
+  <cac:AccountingSupplierParty>
+    <cac:Party>
+      <cbc:EndpointID schemeID="0106">33333333</cbc:EndpointID>
+      <cac:PartyName>
+        <cbc:Name>Gamma Office</cbc:Name>
+      </cac:PartyName>
+      <cac:PostalAddress>
+        <cbc:StreetName>Oudegracht 120</cbc:StreetName>
+        <cbc:CityName>Utrecht</cbc:CityName>
+        <cbc:PostalZone>3511 AX</cbc:PostalZone>
+        <cac:Country>
+          <cbc:IdentificationCode>NL</cbc:IdentificationCode>
+        </cac:Country>
+      </cac:PostalAddress>
+      <cac:PartyTaxScheme>
+        <cbc:CompanyID>NL003333333B01</cbc:CompanyID>
+        <cac:TaxScheme>
+          <cbc:ID>VAT</cbc:ID>
+        </cac:TaxScheme>
+      </cac:PartyTaxScheme>
+      <cac:PartyLegalEntity>
+        <cbc:RegistrationName>Gamma Office Supplies B.V.</cbc:RegistrationName>
+        <cbc:CompanyID schemeID="0106">33333333</cbc:CompanyID>
+      </cac:PartyLegalEntity>
+    </cac:Party>
+  </cac:AccountingSupplierParty>
+  <cac:AccountingCustomerParty>
+    <cac:Party>
+      <cbc:EndpointID schemeID="0106">11111111</cbc:EndpointID>
+      <cac:PostalAddress>
+        <cbc:StreetName>Keizersgracht 1</cbc:StreetName>
+        <cbc:CityName>Amsterdam</cbc:CityName>
+        <cbc:PostalZone>1015 CC</cbc:PostalZone>
+        <cac:Country>
+          <cbc:IdentificationCode>NL</cbc:IdentificationCode>
+        </cac:Country>
+      </cac:PostalAddress>
+      <cac:PartyTaxScheme>
+        <cbc:CompanyID>NL001234567B01</cbc:CompanyID>
+        <cac:TaxScheme>
+          <cbc:ID>VAT</cbc:ID>
+        </cac:TaxScheme>
+      </cac:PartyTaxScheme>
+      <cac:PartyLegalEntity>
+        <cbc:RegistrationName>Acme Supplies B.V.</cbc:RegistrationName>
+        <cbc:CompanyID schemeID="0106">11111111</cbc:CompanyID>
+      </cac:PartyLegalEntity>
+    </cac:Party>
+  </cac:AccountingCustomerParty>
+  <cac:PaymentMeans>
+    <cbc:PaymentMeansCode>58</cbc:PaymentMeansCode>
+    <cbc:PaymentID>GOS-77812</cbc:PaymentID>
+    <cac:PayeeFinancialAccount>
+      <cbc:ID>NL20INGB0001234567</cbc:ID>
+    </cac:PayeeFinancialAccount>
+  </cac:PaymentMeans>
+  <cac:TaxTotal>
+    <cbc:TaxAmount currencyID="EUR">116.25</cbc:TaxAmount>
+    <cac:TaxSubtotal>
+      <cbc:TaxableAmount currencyID="EUR">500.00</cbc:TaxableAmount>
+      <cbc:TaxAmount currencyID="EUR">105.00</cbc:TaxAmount>
+      <cac:TaxCategory>
+        <cbc:ID>S</cbc:ID>
+        <cbc:Percent>21</cbc:Percent>
+        <cac:TaxScheme>
+          <cbc:ID>VAT</cbc:ID>
+        </cac:TaxScheme>
+      </cac:TaxCategory>
+    </cac:TaxSubtotal>
+    <cac:TaxSubtotal>
+      <cbc:TaxableAmount currencyID="EUR">125.00</cbc:TaxableAmount>
+      <cbc:TaxAmount currencyID="EUR">11.25</cbc:TaxAmount>
+      <cac:TaxCategory>
+        <cbc:ID>S</cbc:ID>
+        <cbc:Percent>9</cbc:Percent>
+        <cac:TaxScheme>
+          <cbc:ID>VAT</cbc:ID>
+        </cac:TaxScheme>
+      </cac:TaxCategory>
+    </cac:TaxSubtotal>
+  </cac:TaxTotal>
+  <cac:LegalMonetaryTotal>
+    <cbc:LineExtensionAmount currencyID="EUR">625.00</cbc:LineExtensionAmount>
+    <cbc:TaxExclusiveAmount currencyID="EUR">625.00</cbc:TaxExclusiveAmount>
+    <cbc:TaxInclusiveAmount currencyID="EUR">741.25</cbc:TaxInclusiveAmount>
+    <cbc:PrepaidAmount currencyID="EUR">100.00</cbc:PrepaidAmount>
+    <cbc:PayableAmount currencyID="EUR">641.25</cbc:PayableAmount>
+  </cac:LegalMonetaryTotal>
+  <cac:InvoiceLine>
+    <cbc:ID>10</cbc:ID>
+    <cbc:InvoicedQuantity unitCode="C62">2</cbc:InvoicedQuantity>
+    <cbc:LineExtensionAmount currencyID="EUR">500.00</cbc:LineExtensionAmount>
+    <cac:Item>
+      <cbc:Description>Ergonomic office chair, black</cbc:Description>
+      <cbc:Name>Office chair</cbc:Name>
+      <cac:ClassifiedTaxCategory>
+        <cbc:ID>S</cbc:ID>
+        <cbc:Percent>21</cbc:Percent>
+        <cac:TaxScheme>
+          <cbc:ID>VAT</cbc:ID>
+        </cac:TaxScheme>
+      </cac:ClassifiedTaxCategory>
+    </cac:Item>
+    <cac:Price>
+      <cbc:PriceAmount currencyID="EUR">250.00</cbc:PriceAmount>
+    </cac:Price>
+  </cac:InvoiceLine>
+  <cac:InvoiceLine>
+    <cbc:ID>20</cbc:ID>
+    <cbc:InvoicedQuantity unitCode="KGM">10</cbc:InvoicedQuantity>
+    <cbc:LineExtensionAmount currencyID="EUR">125.00</cbc:LineExtensionAmount>
+    <cac:Item>
+      <cbc:Name>Coffee beans</cbc:Name>
+      <cac:ClassifiedTaxCategory>
+        <cbc:ID>S</cbc:ID>
+        <cbc:Percent>9</cbc:Percent>
+        <cac:TaxScheme>
+          <cbc:ID>VAT</cbc:ID>
+        </cac:TaxScheme>
+      </cac:ClassifiedTaxCategory>
+    </cac:Item>
+    <cac:Price>
+      <cbc:PriceAmount currencyID="EUR">12.50</cbc:PriceAmount>
+    </cac:Price>
+  </cac:InvoiceLine>
+</Invoice>

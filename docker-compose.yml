@@ -4,7 +4,10 @@
 # Profile "full": the whole stack from images, for demos and the e2e tests:
 #   docker compose --profile full up -d --build --wait
 # Images come from GHCR (TAG=1.2.3, default latest) or are built locally when missing or with
-# --build. Settings follow .env.example; the retry delays are short so a demo shows retries.
+# --build. Settings follow .env.example. The stack is tuned for the demo and the e2e tests:
+# short retry delays, a fake VIES that is unavailable for the first two checks of every VAT
+# number (so every document shows the retry path) and knows one invalid number, and a rate limit
+# that leaves room for polling.
 
 name: xml-invoice-processor
 
@@ -18,12 +21,19 @@ x-service: &service
   read_only: true
   init: true
 
+# ADAPTERS: API and worker are separate processes, so the stack needs the real adapters.
 x-service-env: &service-env
-  ADAPTERS: ${ADAPTERS:-in-memory}
+  ADAPTERS: ${ADAPTERS:-real}
   LOG_LEVEL: ${LOG_LEVEL:-info}
   DATABASE_URL: postgresql://${POSTGRES_USER:-xip}:${POSTGRES_PASSWORD:-xip}@postgres:5432/${POSTGRES_DB:-xip}
   AMQP_URL: amqp://${RABBITMQ_USER:-xip}:${RABBITMQ_PASSWORD:-xip}@rabbitmq:5672
   RETRY_DELAYS_MS: ${RETRY_DELAYS_MS:-1000,2000,5000}
+  RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-600}
+  SCHEMATRON_POOL_SIZE: ${SCHEMATRON_POOL_SIZE:-1}
+  SCHEMATRON_TIMEOUT_MS: ${SCHEMATRON_TIMEOUT_MS:-30000}
+  VIES_UNAVAILABLE_TIMES_PER_NUMBER: ${VIES_UNAVAILABLE_TIMES_PER_NUMBER:-2}
+  VIES_UNAVAILABLE_RATE: ${VIES_UNAVAILABLE_RATE:-0}
+  VIES_INVALID_VAT_NUMBERS: ${VIES_INVALID_VAT_NUMBERS:-NL999999999B99}
   # The issuer is only compared as a string: clients on the host fetch tokens from
   # localhost:4000, while the API fetches the keys inside the compose network.
   AUTH_ISSUER: ${AUTH_ISSUER:-http://localhost:4000}

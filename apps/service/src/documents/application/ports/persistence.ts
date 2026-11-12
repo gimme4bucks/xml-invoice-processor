@@ -39,6 +39,17 @@ export class ConcurrencyError extends Error {
   }
 }
 
+/**
+ * Transient: the database could not be reached or did not answer in time. Nothing was committed
+ * by the failing call; the API answers 503 and the worker requeues the message.
+ */
+export class PersistenceUnavailableError extends Error {
+  constructor(reason: string) {
+    super(`Persistence unavailable: ${reason}`);
+    this.name = 'PersistenceUnavailableError';
+  }
+}
+
 export abstract class EventStore {
   /** All events of the stream in version order; empty when the stream does not exist. */
   abstract load(streamId: string): Promise<StoredEvent[]>;

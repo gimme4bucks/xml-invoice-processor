@@ -15,6 +15,8 @@ export class ProblemDetailsFilter implements ExceptionFilter {
 
     // Log the error type and stack only; messages of unexpected errors stay out of the response.
     if (unexpected) this.logger.error(exception);
+    // An anticipated outage (503): its message is log-safe (an error code), no stack needed.
+    else if (problem.status >= 500) this.logger.warn((exception as Error).message);
     if (response.headersSent) return;
 
     for (const [name, value] of Object.entries(headers)) response.setHeader(name, value);
