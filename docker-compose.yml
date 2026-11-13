@@ -3,6 +3,9 @@
 #
 # Profile "full": the whole stack from images, for demos and the e2e tests:
 #   docker compose --profile full up -d --build --wait
+# Clients reach it only over HTTPS through the edge (Caddy, ADR 0013): the API on
+# https://localhost:3443 and the mock IdP on https://localhost:4443. `pnpm tls:ca` exports the
+# edge's root certificate; `pnpm demo` and `pnpm e2e` do that themselves.
 # Images come from GHCR (TAG=1.2.3, default latest) or are built locally when missing or with
 # --build. Settings follow .env.example. The stack is tuned for the demo and the e2e tests:
 # short retry delays, a fake VIES that is unavailable for the first two checks of every VAT
@@ -41,9 +44,10 @@ x-service-env: &service-env
   # production defaults are every minute and 15 minutes.
   SWEEPER_INTERVAL_MS: ${SWEEPER_INTERVAL_MS:-10000}
   SWEEPER_STUCK_AFTER_MS: ${SWEEPER_STUCK_AFTER_MS:-90000}
-  # The issuer is only compared as a string: clients on the host fetch tokens from
-  # localhost:4000, while the API fetches the keys inside the compose network.
-  AUTH_ISSUER: ${AUTH_ISSUER:-http://localhost:4000}
+  # The issuer is only compared as a string: clients fetch tokens through the edge, while the API
+  # fetches the keys inside the compose network (plain HTTP, never leaves it). Fixed, like the
+  # edge's ports: the AUTH_ISSUER in .env is for the IdP running natively during development.
+  AUTH_ISSUER: https://localhost:4443
   AUTH_AUDIENCE: ${AUTH_AUDIENCE:-xml-invoice-processor}
   AUTH_JWKS_URL: http://mock-idp:4000/.well-known/jwks.json
 
@@ -99,8 +103,12 @@ services:
     environment:
       <<: *service-env
       API_PORT: 3000
-    ports:
-      - '${API_PORT:-3000}:3000'
+      # Only the edge talks to it: believe the client address and scheme the edge forwards.
+      TRUST_PROXY: 'true'
+      # Five minutes instead of a year: browsers that apply HSTS to localhost (Safari) would
+      # otherwise force every http://localhost port to HTTPS for a year after one visit.
+      HSTS_MAX_AGE_SECONDS: ${HSTS_MAX_AGE_SECONDS:-300}
+    # No ports: only reachable through the edge.
     # Not on mock-idp: the API fetches the signing keys on the first request, so it starts
     # (and answers /health) without the IdP, as it must with a real external one.
     depends_on:
@@ -137,13 +145,12 @@ services:
     init: true
     environment:
       MOCK_IDP_PORT: 4000
-      AUTH_ISSUER: ${AUTH_ISSUER:-http://localhost:4000}
+      AUTH_ISSUER: https://localhost:4443
       AUTH_AUDIENCE: ${AUTH_AUDIENCE:-xml-invoice-processor}
       # Demo-only clients (format: apps/mock-idp/.env.example): the supplier and the customer
       # of the fixture invoices. Override MOCK_IDP_CLIENTS in .env for anything else.
       MOCK_IDP_CLIENTS: ${MOCK_IDP_CLIENTS:-{"supplier-client":{"secret":"change-me","org_id":"org-supplier","peppol_id":"0106:11111111","scopes":["documents:submit","documents:read"]},"customer-client":{"secret":"change-me","org_id":"org-customer","peppol_id":"0106:22222222","scopes":["documents:submit","documents:read"]}}}
-    ports:
-      - '${MOCK_IDP_PORT:-4000}:4000'
+    # No ports: only reachable through the edge.
     healthcheck:
       test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:4000/.well-known/jwks.json']
       interval: 5s
@@ -153,5 +160,49 @@ services:
       start_interval: 1s
     restart: unless-stopped
 
+  # The only way in from the host (ADR 0013). Caddy terminates TLS with its own CA, whose root
+  # stays in the edge-data volume (`down --volumes` creates a new one), and forwards plain HTTP
+  # inside the network. Plain HTTP to its ports gets a 400, never a redirect. The configuration is
+  # mounted read-only and the admin API is off (deploy/caddy/Caddyfile).
+  edge:
+    image: caddy:2.11.7-alpine
+    profiles: [full]
+    # Not root: the ports are above 1024, and the image's /data/caddy is world-writable, so a new
+    # edge-data volume is writable for any user.
+    user: '10001:10001'
+    read_only: true
+    init: true
+    volumes:
+      - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - edge-data:/data
+    ports:
+      - '3443:3443'
+      - '4443:4443'
+    depends_on:
+      - api
+      - mock-idp
+    # A verified HTTPS request on both ports with the edge's own root certificate. Any HTTP answer
+    # counts (a 502 too): this checks the edge, the services behind it have their own checks.
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - --silent
+        - --show-error
+        - --fail-early
+        - --output
+        - /dev/null
+        - --cacert
+        - /data/caddy/pki/authorities/local/root.crt
+        - https://localhost:3443/health
+        - https://localhost:4443/.well-known/jwks.json
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
+      start_interval: 1s
+    restart: unless-stopped
+
 volumes:
   postgres-data:
+  edge-data:

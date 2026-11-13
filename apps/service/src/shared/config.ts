@@ -13,6 +13,10 @@ const schema = z.object({
   AUTH_AUDIENCE: z.string().min(1).optional(),
   /** Requests per minute per organisation (per API instance). */
   RATE_LIMIT_PER_MINUTE: z.coerce.number().int().positive().default(120),
+  /** Behind exactly one reverse proxy (the edge in compose): believe its X-Forwarded-* headers. */
+  TRUST_PROXY: z.stringbool().default(false),
+  /** Strict-Transport-Security max-age: a year in production, short for a local stack. */
+  HSTS_MAX_AGE_SECONDS: z.coerce.number().int().nonnegative().default(31_536_000),
 });
 
 export type AppConfig = z.infer<typeof schema>;

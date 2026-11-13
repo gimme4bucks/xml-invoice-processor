@@ -1,0 +1,37 @@
+# The edge (ADR 0013): terminates TLS for the API and the mock IdP and forwards plain HTTP inside
+# the compose network. Certificates come from Caddy's own CA, whose root lives in the edge-data
+# volume; `pnpm tls:ca` exports it so that clients can trust it.
+{
+	# The configuration is read-only and baked into the container: no admin API to publish or
+	# protect, and nothing persisted at runtime.
+	admin off
+	persist_config off
+	# HTTPS only. No listener on :80 and no redirect: by the time a plain HTTP request could be
+	# redirected, its client secret or bearer token has already crossed the network in clear text.
+	auto_https disable_redirects
+	# Certificates from Caddy's local CA; never touch the container's own trust store.
+	local_certs
+	skip_install_trust
+	# HTTP/1.1 and HTTP/2 over TCP; HTTP/3 would need UDP ports that compose does not publish.
+	servers {
+		protocols h1 h2
+	}
+}
+
+(edge) {
+	# Defence in depth: slightly above the API's own limit of 1 MiB (which answers with Problem
+	# Details), so that only bodies no client should send are cut off here.
+	request_body {
+		max_size 1100KiB
+	}
+}
+
+https://localhost:3443 {
+	import edge
+	reverse_proxy api:3000
+}
+
+https://localhost:4443 {
+	import edge
+	reverse_proxy mock-idp:4000
+}

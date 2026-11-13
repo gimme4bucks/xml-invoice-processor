@@ -7,6 +7,8 @@ coverage/
 !.env.example
 apps/service/src/generated/
 apps/service/validation-artifacts/generated/
+# The edge's root certificate, exported per stack by `pnpm tls:ca`.
+.tls/
 .DS_Store
 .idea/
 .vscode/

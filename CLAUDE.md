@@ -5,7 +5,7 @@ Read this fully before changing anything. It applies to every session and work p
 ## What this is
 
 A backend that B2B systems (organisations, not people) use to submit **Peppol BIS Billing 3.0
-invoices (UBL 2.1 XML)** over HTTP. Documents are validated, stored and then processed
+invoices (UBL 2.1 XML)** over HTTPS. Documents are validated, stored and then processed
 asynchronously. Clients follow each document's status: `Received`, `Processing`, `Completed` or `Failed`.
 Accepted documents must never be lost, processing may fail, and the same invoice must not be
 processed twice.
@@ -91,6 +91,7 @@ pnpm -F @xip/service prisma:migrate  # apply migrations to DATABASE_URL
 pnpm test                            # unit project: domain, handlers, in-memory contracts, walking skeleton
 pnpm test:contract                   # contract project: real adapters (needs infra + migrations)
 pnpm verify                          # what CI's verify job runs: format, lint, types, depcruise, unit, build
+pnpm tls:ca                          # export the HTTPS edge's root certificate (full stack) to .tls/, for curl --cacert
 pnpm -F @xip/service build           # SWC build to dist/ (the Nest CLI does not run on Node 22.14)
 ADAPTERS=in-memory pnpm -F @xip/service start:api   # walking skeleton API on :3000
 ```

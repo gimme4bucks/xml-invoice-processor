@@ -1,4 +1,5 @@
 import type { INestApplication, NestApplicationOptions } from '@nestjs/common';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
 import { Logger } from 'nestjs-pino';
 import { setupOpenApi } from './openapi';
@@ -9,12 +10,39 @@ import { setupOpenApi } from './openapi';
  */
 export const httpAppOptions: NestApplicationOptions = { bodyParser: false, bufferLogs: true };
 
+export interface HttpAppOptions {
+  /**
+   * The API runs behind exactly one reverse proxy that terminates TLS (ADR 0013). Express then
+   * takes the client address and scheme from the last X-Forwarded-For and X-Forwarded-Proto
+   * entries, the ones that proxy added; anything a client put in front of them is ignored. Off,
+   * the headers are ignored entirely, because anyone can send them.
+   */
+  trustProxy?: boolean;
+  /**
+   * How long browsers keep to HTTPS for this host (Strict-Transport-Security), a year by default.
+   * The compose stack sends a short one: browsers that apply HSTS to `localhost` would otherwise
+   * force every http://localhost port to HTTPS for a year.
+   */
+  hstsMaxAgeSeconds?: number;
+}
+
 /** Everything the API needs on top of ApiModule; shared by main-api.ts and the HTTP tests. */
-export function configureHttpApp(app: INestApplication): void {
+export function configureHttpApp(app: INestApplication, options: HttpAppOptions = {}): void {
+  // One hop, not `true`: with `true`, Express would believe the first address, the client's own.
+  if (options.trustProxy) (app as NestExpressApplication).set('trust proxy', 1);
   app.useLogger(app.get(Logger));
-  // Security headers. upgrade-insecure-requests is dropped so Swagger UI works over plain
-  // http on localhost; TLS is terminated in front of the service.
-  app.use(helmet({ contentSecurityPolicy: { directives: { upgradeInsecureRequests: null } } }));
+  // Security headers, including Strict-Transport-Security. upgrade-insecure-requests is dropped
+  // so Swagger UI also works over plain http on localhost during development; in compose, TLS is
+  // terminated by the edge in front of the service.
+  app.use(
+    helmet({
+      contentSecurityPolicy: { directives: { upgradeInsecureRequests: null } },
+      strictTransportSecurity: {
+        maxAge: options.hstsMaxAgeSeconds ?? 31_536_000,
+        includeSubDomains: true,
+      },
+    }),
+  );
   // CORS stays off (no enableCors): our clients are servers, not browsers.
   setupOpenApi(app);
 }

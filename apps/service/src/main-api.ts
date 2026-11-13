@@ -16,7 +16,10 @@ async function bootstrap(): Promise<void> {
     }),
     httpAppOptions,
   );
-  configureHttpApp(app);
+  configureHttpApp(app, {
+    trustProxy: config.TRUST_PROXY,
+    hstsMaxAgeSeconds: config.HSTS_MAX_AGE_SECONDS,
+  });
   // SIGTERM: stop accepting connections, finish the running requests, then disconnect Postgres.
   app.enableShutdownHooks();
   await app.listen(config.API_PORT);
