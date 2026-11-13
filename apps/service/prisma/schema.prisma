@@ -56,6 +56,8 @@ model DocumentView {
   version        Int
 
   @@index([organisationId, receivedAt(sort: Desc)], map: "document_views_org_received_idx")
+  /// The sweeper's query: non-final documents that have not changed for a while (ADR 0014).
+  @@index([status, updatedAt], map: "document_views_status_updated_idx")
   @@map("document_views")
 }
 

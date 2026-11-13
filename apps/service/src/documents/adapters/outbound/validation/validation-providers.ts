@@ -17,6 +17,11 @@ const envSchema = z.object({
   SCHEMATRON_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
 });
 
+/** SCHEMATRON_TIMEOUT_MS: how long one document's business rules may take in the worker. */
+export function schematronTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
+  return envSchema.pick({ SCHEMATRON_TIMEOUT_MS: true }).parse(env).SCHEMATRON_TIMEOUT_MS;
+}
+
 /**
  * The real validation adapters plus the VIES fake, for the composition root (G07). Settings come
  * from the environment:

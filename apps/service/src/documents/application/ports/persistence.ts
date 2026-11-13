@@ -91,6 +91,15 @@ export interface DocumentPage {
   nextCursor?: string;
 }
 
+/** A document the sweeper may send to the worker again (ADR 0014). */
+export interface StuckDocument {
+  documentId: string;
+  status: DocumentStatus;
+  /** Stream version of the read model row: the expected version of the requeue. */
+  version: number;
+  updatedAt: Date;
+}
+
 export abstract class DocumentViews {
   abstract upsert(view: DocumentView, tx: Transaction): Promise<void>;
   /** Scoped by organisation: another organisation's document is simply not found. */
@@ -100,6 +109,12 @@ export abstract class DocumentViews {
     organisationId: string,
     options: { limit: number; cursor?: string; status?: DocumentStatus },
   ): Promise<DocumentPage>;
+  /**
+   * For the sweeper, across all organisations: documents that are not final, whose read model
+   * has not changed since before `updatedBefore`, and that have no unpublished outbox message
+   * (one waiting for the relay is not stuck). Least recently changed first.
+   */
+  abstract findStuck(options: { updatedBefore: Date; limit: number }): Promise<StuckDocument[]>;
 }
 
 export interface Blob {

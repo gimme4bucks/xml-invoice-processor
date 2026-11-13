@@ -18,6 +18,7 @@ import {
   Outbox,
   type OutboxMessage,
   type StoredEvent,
+  type StuckDocument,
   type Transaction,
   UnitOfWork,
 } from '../../../application/ports';
@@ -192,6 +193,33 @@ export class PrismaDocumentViews extends DocumentViews {
       items,
       ...(rows.length > options.limit && last ? { nextCursor: encodeCursor(last) } : {}),
     };
+  }
+
+  /**
+   * Uses document_views_status_updated_idx; the NOT EXISTS only looks at pending outbox rows
+   * (outbox_pending_idx), of which there are few unless the broker is down.
+   */
+  async findStuck(options: { updatedBefore: Date; limit: number }): Promise<StuckDocument[]> {
+    const rows = await guardUnavailable(
+      () => this.prisma.$queryRaw<
+        Array<{ document_id: string; status: string; version: number; updated_at: Date }>
+      >`
+        SELECT v.document_id, v.status, v.version, v.updated_at
+        FROM document_views v
+        WHERE v.status IN ('Received', 'Processing')
+          AND v.updated_at < ${options.updatedBefore}
+          AND NOT EXISTS (
+            SELECT 1 FROM outbox o
+            WHERE o.published_at IS NULL AND o.payload->>'documentId' = v.document_id::text)
+        ORDER BY v.updated_at, v.document_id
+        LIMIT ${options.limit}`,
+    );
+    return rows.map((row) => ({
+      documentId: row.document_id,
+      status: row.status as DocumentStatus,
+      version: row.version,
+      updatedAt: row.updated_at,
+    }));
   }
 }
 

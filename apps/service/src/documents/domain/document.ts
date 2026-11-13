@@ -1,4 +1,4 @@
-import type { DocumentEvent, FailureReason } from './document-events';
+import type { DocumentEvent, FailureReason, RequeueReason } from './document-events';
 import { DomainError } from './errors';
 import type {
   ContentHash,
@@ -36,6 +36,7 @@ export interface ReceiveDocument {
  *   attempt n running ──recordTransientFailure─▶ [Processing, attempt n ended]  (n < max)
  *                                            └─▶ [Failed]                      (n = max)
  *   attempt n ended ────startProcessing───────▶ [Processing, attempt n+1 running]
+ *   any non-final state ──requeue─────────────▶ (unchanged; records which attempt to ask for)
  *
  * Anything else is refused with a DomainError: `DOCUMENT_FINAL` once Completed or Failed,
  * `ATTEMPT_IN_PROGRESS` when starting while an attempt runs, and `NO_ATTEMPT_IN_PROGRESS` when
@@ -179,6 +180,18 @@ export class Document {
     this.record({ type: 'DocumentProcessingFailed', reason, failedAt: now.toISOString() });
   }
 
+  /**
+   * Sends a stuck document to the worker again (DLQ re-drive or sweeper). Returns the attempt the
+   * new message must ask for: the running attempt while one is in progress, so the worker resumes
+   * it, otherwise the next one. A final document is refused with `DOCUMENT_FINAL`.
+   */
+  requeue(reason: RequeueReason, now: Date): number {
+    this.assertNotFinal('requeue');
+    const attempt = this.state.attemptInProgress ? this.state.attempts : this.state.attempts + 1;
+    this.record({ type: 'ProcessingRequeued', attempt, reason, requeuedAt: now.toISOString() });
+    return attempt;
+  }
+
   private record(event: DocumentEvent): void {
     this.apply(event);
     this.pending.push(event);
@@ -216,6 +229,9 @@ export class Document {
         this.state.status = 'Failed';
         this.state.attemptInProgress = false;
         this.state.failure = event.reason;
+        return;
+      case 'ProcessingRequeued':
+        // History only: the requeued message decides through the attempt it asks for.
         return;
     }
   }

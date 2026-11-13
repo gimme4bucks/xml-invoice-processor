@@ -16,6 +16,7 @@ import {
   Outbox,
   type OutboxMessage,
   type StoredEvent,
+  type StuckDocument,
   type Transaction,
   UnitOfWork,
 } from '../../../application/ports';
@@ -95,6 +96,28 @@ export class InMemoryDocumentViews extends DocumentViews {
       items: structuredClone(items),
       ...(next < all.length ? { nextCursor: String(next) } : {}),
     };
+  }
+
+  async findStuck(options: { updatedBefore: Date; limit: number }): Promise<StuckDocument[]> {
+    const pending = new Set(
+      this.db.tables.outbox
+        .filter((row) => !row.publishedAt)
+        .map((row) => String(row.payload['documentId'])),
+    );
+    return [...this.db.tables.views.values()]
+      .filter((v) => v.status === 'Received' || v.status === 'Processing')
+      .filter((v) => v.updatedAt < options.updatedBefore && !pending.has(v.documentId))
+      .sort(
+        (a, b) =>
+          a.updatedAt.getTime() - b.updatedAt.getTime() || a.documentId.localeCompare(b.documentId),
+      )
+      .slice(0, options.limit)
+      .map(({ documentId, status, version, updatedAt }) => ({
+        documentId,
+        status,
+        version,
+        updatedAt: new Date(updatedAt),
+      }));
   }
 }
 

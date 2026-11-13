@@ -5,17 +5,18 @@ import {
   type OnModuleDestroy,
   type Provider,
 } from '@nestjs/common';
-import { CommandBus } from '@nestjs/cqrs';
 import type { Channel, ConsumeMessage } from 'amqplib';
 import type { ChannelWrapper } from 'amqp-connection-manager';
-import { ProcessDocumentCommand } from '../../../application/commands/process-document';
-import type { ProcessDocumentMessage } from '../../../application/ports';
 import { AmqpConnection } from '../../outbound/rabbitmq/amqp-connection';
 import { requeueDelay } from '../../outbound/rabbitmq/rabbitmq-config';
+import {
+  type IncomingProcessMessage,
+  ProcessMessageDispatcher,
+} from './process-message-dispatcher';
 
 /**
- * Inbound adapter for the worker: turns deliveries from `documents.process` into
- * ProcessDocumentCommands. It acks only after the handler resolved, so after its transaction
+ * Inbound adapter for the worker: hands deliveries from `documents.process` to the dispatcher,
+ * which runs ProcessDocumentCommand and logs the outcome. It acks only after the handler resolved, so after its transaction
  * committed, and on the channel the delivery came from. A crash in between redelivers the message,
  * which the handler absorbs because it is idempotent (ADR 0004).
  */
@@ -29,7 +30,7 @@ export class RabbitMqDocumentConsumer implements OnApplicationBootstrap, OnModul
 
   constructor(
     private readonly connection: AmqpConnection,
-    private readonly commands: CommandBus,
+    private readonly dispatcher: ProcessMessageDispatcher,
   ) {}
 
   /** Subscribes on every (re)connect. Startup does not wait for the broker to be reachable. */
@@ -75,7 +76,7 @@ export class RabbitMqDocumentConsumer implements OnApplicationBootstrap, OnModul
     }
     const messageId = String(message.properties.messageId);
     try {
-      await this.commands.execute(toCommand(message)); // resolves after the commit
+      await this.dispatcher.dispatch(incoming(message)); // resolves after the commit
     } catch (error) {
       const deliveries = Number(message.properties.headers?.['x-delivery-count'] ?? 0);
       const delayMs = requeueDelay(deliveries, this.connection.config.requeueDelayMs);
@@ -102,22 +103,20 @@ export class RabbitMqDocumentConsumer implements OnApplicationBootstrap, OnModul
   }
 }
 
-/** A malformed message throws, so it is requeued until the delivery limit sends it to the DLQ. */
-function toCommand(message: ConsumeMessage): ProcessDocumentCommand {
-  const payload = JSON.parse(message.content.toString('utf8')) as Partial<ProcessDocumentMessage>;
-  const { documentId, attempt } = payload;
-  if (typeof documentId !== 'string' || !Number.isInteger(attempt) || Number(attempt) < 1) {
-    throw new Error('Malformed process message: documentId or attempt missing');
+/** The body is JSON; anything else becomes a malformed message that the dispatcher rejects. */
+function incoming(message: ConsumeMessage): IncomingProcessMessage {
+  let payload: unknown;
+  try {
+    payload = JSON.parse(message.content.toString('utf8'));
+  } catch {
+    payload = undefined;
   }
-  const messageId = String(message.properties.messageId);
-  const correlationId: unknown = message.properties.headers?.['x-correlation-id'];
-  return new ProcessDocumentCommand({
-    documentId,
-    attempt: Number(attempt),
-    messageId,
-    correlationId: typeof correlationId === 'string' ? correlationId : messageId,
-  });
+  return {
+    payload,
+    messageId: String(message.properties.messageId),
+    headers: message.properties.headers ?? {},
+  };
 }
 
 /** For the worker module (G07). Requires the providers from `rabbitMqProviders()`. */
-export const messagingConsumers: Provider[] = [RabbitMqDocumentConsumer];
+export const messagingConsumers: Provider[] = [RabbitMqDocumentConsumer, ProcessMessageDispatcher];
