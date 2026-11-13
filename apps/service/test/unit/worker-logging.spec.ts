@@ -72,16 +72,14 @@ describe('worker logging (in-memory adapters)', () => {
 
   const submit = async (idempotencyKey: string, invoiceNumber: string) => {
     const xml = Buffer.from(fixture.toString().replace('INV-2026-0042', invoiceNumber));
-    const { documentId } = await worker
-      .get(CommandBus)
-      .execute(
-        new SubmitDocumentCommand({
-          ...org,
-          idempotencyKey,
-          xml,
-          correlationId: `corr-${idempotencyKey}`,
-        }),
-      );
+    const { documentId } = await worker.get(CommandBus).execute(
+      new SubmitDocumentCommand({
+        ...org,
+        idempotencyKey,
+        xml,
+        correlationId: `corr-${idempotencyKey}`,
+      }),
+    );
     return documentId as string;
   };
 

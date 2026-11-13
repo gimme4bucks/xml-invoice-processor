@@ -120,9 +120,7 @@ describe('RequeueDocumentHandler (in-memory adapters)', () => {
     const view = await h.view(documentId);
     vi.spyOn(h.outbox, 'enqueue').mockRejectedValueOnce(new Error('database down'));
 
-    await expect(h.requeue({ documentId, reason: 'dlq-redrive' })).rejects.toThrow(
-      'database down',
-    );
+    await expect(h.requeue({ documentId, reason: 'dlq-redrive' })).rejects.toThrow('database down');
 
     expect(await h.eventTypes(documentId)).toEqual(['DocumentReceived']);
     expect(await h.view(documentId)).toEqual(view);
