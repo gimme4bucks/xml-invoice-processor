@@ -61,7 +61,8 @@ describe('S3ObjectStore', () => {
     expect(requests).toHaveLength(1);
     expect(requests[0]).toMatchObject({
       method: 'PUT',
-      url: `/documents/sha256/${sha256}`,
+      // Path-style: /bucket/key. The SDK adds an ?x-id=PutObject query of its own.
+      url: expect.stringMatching(new RegExp(`^/documents/sha256/${sha256}(\\?|$)`)) as string,
       headers: {
         'content-type': 'application/xml',
         'x-amz-checksum-sha256': Buffer.from(sha256, 'hex').toString('base64'),
