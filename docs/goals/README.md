@@ -20,6 +20,7 @@ paths, verifiable acceptance criteria and a Definition of Done (see `CLAUDE.md`)
 | 4b    | [G11 Credit notes](G11-credit-notes.md)               | G08        | G10            |
 | 4c    | [G12 Documents in S3](G12-s3-blob-store.md)           | G08        | G10, G13       |
 | 4c    | [G13 Support access with PKCE](G13-support-access.md) | G08        | G10, G12       |
+| 4d    | [G14 Support view in the browser](G14-support-web.md) | G13        | –              |
 
 Phase 4 (after v1.0.0) adds the extras. From G08 on, every package works test-first (red,
 green, refactor; see `CLAUDE.md`).
