@@ -55,11 +55,27 @@ export interface DocumentProcessingFailed {
   failedAt: string;
 }
 
+/** Who sent a stuck document to the worker again (ADR 0014). */
+export type RequeueReason = 'dlq-redrive' | 'sweeper';
+
+/**
+ * A stuck document was sent to the worker again: its message ended in the dead-letter queue, or
+ * the sweeper found it unchanged for too long. Only recorded; the state stays as it was.
+ */
+export interface ProcessingRequeued {
+  type: 'ProcessingRequeued';
+  /** The attempt the new message asks for. */
+  attempt: number;
+  reason: RequeueReason;
+  requeuedAt: string;
+}
+
 export type DocumentEvent =
   | DocumentReceived
   | ProcessingStarted
   | ProcessingAttemptFailed
   | DocumentProcessed
-  | DocumentProcessingFailed;
+  | DocumentProcessingFailed
+  | ProcessingRequeued;
 
 export type DocumentEventType = DocumentEvent['type'];
