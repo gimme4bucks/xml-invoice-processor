@@ -57,6 +57,11 @@ const description = [
   'Your organisation always comes from the token. Send `x-correlation-id` to trace a request;',
   'it is echoed on every response.',
   '',
+  'The `/support` endpoints are for support staff only: a token from the Authorization Code +',
+  'PKCE flow with scope `support:read` and no `org_id`. They are read-only across organisations,',
+  'never return the XML or the processing result, and every request is audited (ADR 0017).',
+  'Organisation tokens cannot use them, and support tokens cannot use the organisation endpoints.',
+  '',
   'Errors are `application/problem+json` with a stable `code`:',
   '',
   '| code | status | meaning |',
@@ -90,7 +95,8 @@ export function createOpenApiDocument(app: INestApplication): OpenAPIObject {
       type: 'http',
       scheme: 'bearer',
       bearerFormat: 'JWT',
-      description: 'OAuth2 client-credentials token with documents:submit and/or documents:read.',
+      description:
+        'Organisation: a client-credentials token with documents:submit and/or documents:read. Support: an Authorization Code + PKCE token with support:read and no org_id.',
     })
     .build();
   const document = SwaggerModule.createDocument(app, config);
