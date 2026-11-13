@@ -18,6 +18,7 @@ import {
   Outbox,
   type OutboxMessage,
   type StoredEvent,
+  type StuckDocument,
   type Transaction,
   UnitOfWork,
 } from '../../../application/ports';
@@ -192,6 +193,10 @@ export class PrismaDocumentViews extends DocumentViews {
       items,
       ...(rows.length > options.limit && last ? { nextCursor: encodeCursor(last) } : {}),
     };
+  }
+
+  findStuck(): Promise<StuckDocument[]> {
+    throw new Error('findStuck is not implemented yet');
   }
 }
 

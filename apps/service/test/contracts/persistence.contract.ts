@@ -227,6 +227,55 @@ export function describePersistenceContract(
       });
     });
 
+    describe('DocumentViews.findStuck (sweeper)', () => {
+      const at = (hhmm: string) => new Date(`2026-11-12T${hhmm}:00.000Z`);
+      const process = (documentId: string): OutboxMessage => ({
+        ...message(),
+        payload: { documentId, attempt: 1 },
+      });
+
+      /** One document per case; `stuck` lists the ones the sweeper must find, oldest change first. */
+      const arrange = async () => {
+        const id = () => randomUUID();
+        const docs = {
+          publishedOnly: view(id(), { status: 'Processing', updatedAt: at('09:45'), version: 4 }),
+          otherOrganisation: view(id(), { organisationId: 'org-2', updatedAt: at('09:50') }),
+          received: view(id(), { updatedAt: at('10:00') }),
+          processing: view(id(), { status: 'Processing', updatedAt: at('10:01'), version: 2 }),
+          completed: view(id(), { status: 'Completed', updatedAt: at('09:00') }),
+          failed: view(id(), { status: 'Failed', updatedAt: at('09:00') }),
+          recent: view(id(), { updatedAt: at('10:30') }),
+          pendingMessage: view(id(), { updatedAt: at('09:30') }),
+        };
+        await h.uow.run(async (tx) => {
+          for (const doc of Object.values(docs)) await h.views.upsert(doc, tx);
+          await h.outbox.enqueue([process(docs.publishedOnly.documentId)], tx);
+        });
+        // A published message no longer counts; a pending one (waiting for the relay) does.
+        await h.outbox.publishPending(10, async () => undefined);
+        await h.uow.run((tx) => h.outbox.enqueue([process(docs.pendingMessage.documentId)], tx));
+        const stuck = [docs.publishedOnly, docs.otherOrganisation, docs.received, docs.processing];
+        return stuck.map(({ documentId, status, version, updatedAt }) => ({
+          documentId,
+          status,
+          version,
+          updatedAt,
+        }));
+      };
+
+      it('finds non-final documents unchanged since the cutoff and without a pending outbox message, oldest first', async () => {
+        const stuck = await arrange();
+        expect(await h.views.findStuck({ updatedBefore: at('10:15'), limit: 10 })).toEqual(stuck);
+      });
+
+      it('returns at most `limit` documents', async () => {
+        const stuck = await arrange();
+        expect(await h.views.findStuck({ updatedBefore: at('10:15'), limit: 2 })).toEqual(
+          stuck.slice(0, 2),
+        );
+      });
+    });
+
     describe('BlobStore', () => {
       it('round-trips bytes and returns undefined for a missing key', async () => {
         const content = Buffer.from('<Invoice>€ 100</Invoice>', 'utf8');

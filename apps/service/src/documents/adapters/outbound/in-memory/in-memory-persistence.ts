@@ -16,6 +16,7 @@ import {
   Outbox,
   type OutboxMessage,
   type StoredEvent,
+  type StuckDocument,
   type Transaction,
   UnitOfWork,
 } from '../../../application/ports';
@@ -95,6 +96,10 @@ export class InMemoryDocumentViews extends DocumentViews {
       items: structuredClone(items),
       ...(next < all.length ? { nextCursor: String(next) } : {}),
     };
+  }
+
+  findStuck(): Promise<StuckDocument[]> {
+    throw new Error('findStuck is not implemented yet');
   }
 }
 
