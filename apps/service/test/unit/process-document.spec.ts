@@ -9,6 +9,7 @@ import {
 import { OutboxRelay } from '../../src/documents/application/relay/outbox-relay';
 import { MAX_PROCESSING_ATTEMPTS } from '../../src/documents/domain/document';
 import type { RuleViolation } from '../../src/documents/domain/document-events';
+import { peppolFixture } from '../fixtures/peppol';
 import {
   createHarness,
   customer,
@@ -75,6 +76,44 @@ describe('ProcessDocumentHandler (in-memory adapters)', () => {
     });
     expect(await h.blobs.get(`documents/${documentId}/result.json`)).toBeDefined();
     expect(h.outboxMessages()).toHaveLength(1);
+  });
+
+  describe('credit notes', () => {
+    const creditNote = peppolFixture('credit-note');
+
+    it('completes a credit note: documentType CreditNote, result under creditNote', async () => {
+      const h = createHarness();
+      const { documentId } = await h.submit({ xml: creditNote });
+      expect(await h.view(documentId)).toMatchObject({
+        documentType: 'CreditNote',
+        direction: 'sales',
+      });
+
+      expect(await h.deliver(h.lastMessage())).toBe('completed');
+
+      expect(await h.view(documentId)).toMatchObject({ status: 'Completed' });
+      const blob = await h.blobs.get(`documents/${documentId}/result.json`);
+      const result = JSON.parse(blob?.content.toString('utf8') ?? '{}') as Record<string, unknown>;
+      expect(result).toMatchObject({
+        documentId,
+        direction: 'sales',
+        creditNote: { documentType: 'CreditNote', creditNoteNumber: 'CN-2026-0007' },
+      });
+      expect(result).not.toHaveProperty('invoice');
+    });
+
+    it("purchase credit note: checks the supplier's VAT number, as for an invoice", async () => {
+      const h = createHarness();
+      h.vat.invalid.add(supplierVat);
+      const { documentId } = await h.submit({ org: customer, xml: creditNote });
+      expect(await h.view(documentId, customer)).toMatchObject({ direction: 'purchase' });
+
+      expect(await h.deliver(h.lastMessage())).toBe('failed');
+      expect(await h.view(documentId, customer)).toMatchObject({
+        status: 'Failed',
+        failure: { code: 'VAT_NUMBER_INVALID' },
+      });
+    });
   });
 
   describe('crashes and duplicate deliveries', () => {
