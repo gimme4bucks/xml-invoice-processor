@@ -1,6 +1,7 @@
 import {
   Inject,
   Injectable,
+  Logger,
   type OnApplicationBootstrap,
   type OnApplicationShutdown,
 } from '@nestjs/common';
@@ -43,15 +44,43 @@ export class OrphanObjectCollector {
   }
 }
 
-/** Runs the collector in every worker, once per interval. */
+/**
+ * Runs the collector in every worker, once per interval (the first time one interval after
+ * startup). The workers may overlap: the locks make that safe. A failed run (the object store or
+ * the database is down) is logged and tried again next time; orphans only cost storage meanwhile.
+ */
 @Injectable()
 export class OrphanSweepLoop implements OnApplicationBootstrap, OnApplicationShutdown {
+  private readonly logger = new Logger(OrphanSweepLoop.name);
+  private timer?: NodeJS.Timeout;
+  private stopped = false;
+
   constructor(
     private readonly collector: OrphanObjectCollector,
     @Inject(ORPHAN_SWEEP_SETTINGS) private readonly settings: OrphanSweepSettings,
   ) {}
 
-  onApplicationBootstrap(): void {}
+  onApplicationBootstrap(): void {
+    this.schedule();
+  }
 
-  onApplicationShutdown(): void {}
+  onApplicationShutdown(): void {
+    this.stopped = true;
+    clearTimeout(this.timer);
+  }
+
+  private schedule(): void {
+    if (this.stopped) return;
+    this.timer = setTimeout(() => void this.tick(), this.settings.intervalMs);
+  }
+
+  private async tick(): Promise<void> {
+    try {
+      const report = await this.collector.collect(new Date(Date.now() - this.settings.minAgeMs));
+      this.logger.log({ msg: 'Orphan objects collected', ...report });
+    } catch (error) {
+      this.logger.error(`Orphan sweep failed, trying again later: ${(error as Error).message}`);
+    }
+    this.schedule();
+  }
 }

@@ -1,4 +1,5 @@
 import type { Provider } from '@nestjs/common';
+import { z } from 'zod';
 import {
   BlobStore,
   BusinessRuleValidator,
@@ -30,10 +31,24 @@ import {
   StubInvoiceMapper,
   StubStructureValidator,
 } from '../documents/adapters/outbound/in-memory/stub-validation';
+import { PrismaBlobReferences } from '../documents/adapters/outbound/postgres/prisma-blob-references';
 import { postgresProviders } from '../documents/adapters/outbound/postgres/postgres-providers';
 import { AmqpConnection } from '../documents/adapters/outbound/rabbitmq/amqp-connection';
 import { loadRabbitMqConfig } from '../documents/adapters/outbound/rabbitmq/rabbitmq-config';
 import { rabbitMqProviders } from '../documents/adapters/outbound/rabbitmq/rabbitmq-providers';
+import { BlobReferences } from '../documents/adapters/outbound/s3/blob-references';
+import { ObjectStore } from '../documents/adapters/outbound/s3/object-store';
+import {
+  OrphanObjectCollector,
+  OrphanSweepLoop,
+} from '../documents/adapters/outbound/s3/orphan-objects';
+import { S3BlobStore } from '../documents/adapters/outbound/s3/s3-blob-store';
+import {
+  loadOrphanSweepSettings,
+  loadS3Config,
+  ORPHAN_SWEEP_SETTINGS,
+} from '../documents/adapters/outbound/s3/s3-config';
+import { S3ObjectStore } from '../documents/adapters/outbound/s3/s3-object-store';
 import { RandomIdGenerator, SystemClock } from '../documents/adapters/outbound/system/system';
 import {
   schematronTimeoutMs,
@@ -99,8 +114,8 @@ export type ProcessRole = 'api' | 'worker';
 
 /**
  * The real adapters. Missing settings are a startup error, not a failure on the first request:
- * both processes need DATABASE_URL, the worker also AMQP_URL. The validation adapters and the
- * VIES fake read their own settings (SCHEMATRON_*, VIES_*) from `env`.
+ * both processes need DATABASE_URL, the worker also AMQP_URL, and BLOB_STORE=s3 needs S3_*. The
+ * validation adapters and the VIES fake read their own settings (SCHEMATRON_*, VIES_*) from `env`.
  */
 export function realProviders(
   config: AppConfig,
@@ -112,11 +127,41 @@ export function realProviders(
     throw new Error('AMQP_URL is required for the worker when ADAPTERS=real');
   }
   return [
-    ...postgresProviders(config.DATABASE_URL),
+    ...persistenceProviders(config.DATABASE_URL, role, env),
     ...(role === 'worker' ? rabbitMqProviders(loadRabbitMqConfig(env)) : []),
     ...validationProviders(env),
     { provide: Clock, useClass: SystemClock },
     { provide: IdGenerator, useClass: RandomIdGenerator },
+  ];
+}
+
+const blobStoreSchema = z.object({ BLOB_STORE: z.enum(['postgres', 's3']).default('postgres') });
+
+/**
+ * Postgres for everything, and for the documents' bytes either the blobs table
+ * (BLOB_STORE=postgres, the default) or an S3 bucket with only the reference in the blobs table
+ * (BLOB_STORE=s3, ADR 0016). With S3 the worker also deletes orphaned objects.
+ */
+function persistenceProviders(
+  databaseUrl: string,
+  role: ProcessRole,
+  env: NodeJS.ProcessEnv,
+): Provider[] {
+  const postgres = postgresProviders(databaseUrl);
+  if (blobStoreSchema.parse(env).BLOB_STORE === 'postgres') return postgres;
+  const s3 = loadS3Config(env);
+  return [
+    ...postgres.filter((provider) => (provider as { provide?: unknown }).provide !== BlobStore),
+    { provide: ObjectStore, useFactory: () => new S3ObjectStore(s3) },
+    { provide: BlobReferences, useClass: PrismaBlobReferences },
+    { provide: BlobStore, useClass: S3BlobStore },
+    ...(role === 'worker'
+      ? [
+          OrphanObjectCollector,
+          OrphanSweepLoop,
+          { provide: ORPHAN_SWEEP_SETTINGS, useValue: loadOrphanSweepSettings(env) },
+        ]
+      : []),
   ];
 }
 
