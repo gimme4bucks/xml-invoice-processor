@@ -54,6 +54,34 @@ export class DocumentHistoryDto {
   @ApiProperty({ type: [HistoryEntryDto] }) history!: HistoryEntryDto[];
 }
 
+/**
+ * What support sees of a document (ADR 0017): the organisation's metadata plus whose document it
+ * is. Never the XML or the processing result.
+ */
+export class SupportDocumentDto {
+  @ApiProperty({ format: 'uuid' }) documentId!: string;
+  @ApiProperty({ description: 'The organisation that submitted the document' })
+  organisationId!: string;
+  @ApiProperty({ enum: documentTypes }) documentType!: DocumentType;
+  @ApiProperty({ enum: ['purchase', 'sales'], description: "From the submitter's view" })
+  direction!: InvoiceDirection;
+  @ApiProperty({ enum: documentStatuses }) status!: DocumentStatus;
+  @ApiProperty({ description: 'Processing attempts so far' }) attempts!: number;
+  @ApiPropertyOptional({
+    description: 'Why the document Failed (or the last attempt failed): `code`, `message`, rules',
+  })
+  failure?: FailureReason;
+  @ApiProperty() receivedAt!: string;
+  @ApiProperty() updatedAt!: string;
+  @ApiPropertyOptional() completedAt?: string;
+}
+
+export class SupportDocumentListDto {
+  @ApiProperty({ type: [SupportDocumentDto] }) items!: SupportDocumentDto[];
+  @ApiPropertyOptional({ description: 'Pass as `cursor` for the next page; absent on the last' })
+  nextCursor?: string;
+}
+
 export function toDocumentDto(view: DocumentView): DocumentDto {
   return {
     documentId: view.documentId,
@@ -66,6 +94,11 @@ export function toDocumentDto(view: DocumentView): DocumentDto {
     updatedAt: view.updatedAt.toISOString(),
     ...(view.completedAt ? { completedAt: view.completedAt.toISOString() } : {}),
   };
+}
+
+export function toSupportDocumentDto(view: DocumentView): SupportDocumentDto {
+  const { documentId, ...rest } = toDocumentDto(view);
+  return { documentId, organisationId: view.organisationId, ...rest };
 }
 
 export function toHistoryEntryDto(entry: HistoryEntry): HistoryEntryDto {

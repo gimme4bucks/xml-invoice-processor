@@ -177,9 +177,8 @@ describe('support access (ADR 0017)', () => {
         .get('/support/documents')
         .query({ limit: 2, cursor: first.body.nextCursor as string })
         .set('Authorization', `Bearer ${support}`);
-      expect(next.body.items.map((item: { documentId: string }) => item.documentId)).toEqual([
-        supplierDocument,
-      ]);
+      const items = next.body.items as Array<{ documentId: string }>;
+      expect(items.map((item) => item.documentId)).toEqual([supplierDocument]);
       expect(next.body.nextCursor).toBeUndefined();
     });
 
