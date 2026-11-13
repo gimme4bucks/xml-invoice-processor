@@ -1,5 +1,5 @@
 import type { INestApplication, NestApplicationOptions } from '@nestjs/common';
-import type { Application } from 'express';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
 import { Logger } from 'nestjs-pino';
 import { setupOpenApi } from './openapi';
@@ -22,7 +22,8 @@ export interface HttpAppOptions {
 
 /** Everything the API needs on top of ApiModule; shared by main-api.ts and the HTTP tests. */
 export function configureHttpApp(app: INestApplication, options: HttpAppOptions = {}): void {
-  if (options.trustProxy) app.getHttpAdapter().getInstance<Application>().set('trust proxy', 1);
+  // One hop, not `true`: with `true`, Express would believe the first address, the client's own.
+  if (options.trustProxy) (app as NestExpressApplication).set('trust proxy', 1);
   app.useLogger(app.get(Logger));
   // Security headers, including Strict-Transport-Security. upgrade-insecure-requests is dropped
   // so Swagger UI also works over plain http on localhost during development; in compose, TLS is
