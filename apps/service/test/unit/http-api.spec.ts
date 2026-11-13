@@ -368,7 +368,10 @@ describe('HTTP API', () => {
       ['from another issuer', () => token(supplier, ALL_SCOPES, { issuer: 'https://evil.test' })],
       ['for another audience', () => token(supplier, ALL_SCOPES, { audience: 'other-api' })],
       ['signed with an unknown key', () => token(supplier, ALL_SCOPES, { key: foreignKey })],
-      ['without org_id', () => token({ peppol_id: supplier.peppol_id } as typeof supplier)],
+      [
+        'with a peppol_id but no org_id',
+        () => token({ peppol_id: supplier.peppol_id } as typeof supplier),
+      ],
       ['with a malformed peppol_id', () => token({ ...supplier, peppol_id: 'not-a-peppol-id' })],
       ['not a JWT at all', () => Promise.resolve('not.a.jwt')],
       [
