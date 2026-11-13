@@ -1,5 +1,5 @@
-# Profile "infra" (`pnpm infra:up`): only Postgres and RabbitMQ; the API, worker and mock IdP
-# run natively with Node during development.
+# Profile "infra" (`pnpm infra:up`): only Postgres, RabbitMQ and the object store; the API, worker
+# and mock IdP run natively with Node during development (with BLOB_STORE=postgres by default).
 #
 # Profile "full": the whole stack from images, for demos and the e2e tests:
 #   docker compose --profile full up -d --build --wait
@@ -50,6 +50,16 @@ x-service-env: &service-env
   AUTH_ISSUER: https://localhost:4443
   AUTH_AUDIENCE: ${AUTH_AUDIENCE:-xml-invoice-processor}
   AUTH_JWKS_URL: http://mock-idp:4000/.well-known/jwks.json
+  # Documents in the bucket of the s3 service, only their references in Postgres (ADR 0016). Fixed
+  # like ADAPTERS: the full stack shows the production layout. The keys are the local server's
+  # demo credentials; a deployment leaves them unset and uses an IAM role.
+  BLOB_STORE: s3
+  S3_ENDPOINT: http://s3:7070
+  S3_FORCE_PATH_STYLE: 'true'
+  S3_REGION: ${S3_REGION:-eu-central-1}
+  S3_BUCKET: ${S3_BUCKET:-xip-documents}
+  S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-xip}
+  S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-xip-secret}
 
 services:
   postgres:
@@ -141,6 +151,8 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+      s3:
+        condition: service_healthy
     healthcheck:
       test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:3000/health']
       interval: 5s
@@ -159,6 +171,8 @@ services:
       migrate:
         condition: service_completed_successfully
       rabbitmq:
+        condition: service_healthy
+      s3:
         condition: service_healthy
     restart: unless-stopped
 
