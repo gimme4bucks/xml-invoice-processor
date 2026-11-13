@@ -48,25 +48,22 @@ describe('crashes (chaos)', () => {
   });
 
   it('completes a burst of 20 documents once each when RabbitMQ is killed while the relay publishes', async () => {
-    // All 20 are submitted at once; the broker dies once half of them are accepted, so the relay
-    // is cut off in the middle of publishing them. Intake only needs Postgres: the rest still gets in.
-    let accepted = 0;
-    let halfway!: () => void;
-    const halfAccepted = new Promise<void>((resolve) => (halfway = resolve));
-    const submissions = Promise.all(
-      Array.from({ length: 20 }, async () => {
-        const id = await supplier.accepted(invoice('valid-sales'));
-        if (++accepted === 10) halfway();
-        return id;
-      }),
-    );
-    await Promise.race([halfAccepted, submissions]);
+    // The first half is submitted at once, and the broker dies as soon as the first of them is
+    // accepted: the relay is publishing them. Which of those made it before the kill is up to timing.
+    const firstHalf = Array.from({ length: 10 }, () => supplier.accepted(invoice('valid-sales')));
+    await Promise.race(firstHalf);
     await compose('kill', '-s', 'KILL', 'rabbitmq');
-    const documentIds = await submissions;
+    // The second half arrives while the broker is down (intake only needs Postgres), so the relay
+    // certainly has messages it cannot publish yet. Without this, a fast machine could publish all
+    // 20 before the kill lands.
+    const secondHalf = await Promise.all(
+      Array.from({ length: 10 }, () => supplier.accepted(invoice('valid-sales'))),
+    );
+    const documentIds = [...(await Promise.all(firstHalf)), ...secondHalf];
     expect(
-      await database.unpublishedOutboxRows(documentIds),
-      'messages still waiting for the broker',
-    ).toBeGreaterThan(0);
+      await database.unpublishedOutboxRows(secondHalf),
+      'messages waiting for the broker',
+    ).toBe(10);
 
     // The relay publishes what is left (and again what it could not confirm), the worker restarts
     // after its channels closed, and quorum queues kept what was already published.
