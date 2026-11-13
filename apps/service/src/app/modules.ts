@@ -10,6 +10,7 @@ import { OutboxRelay } from '../documents/application/relay/outbox-relay';
 import { DocumentsController } from '../documents/adapters/inbound/http/documents.controller';
 import { HealthController } from '../documents/adapters/inbound/http/health.controller';
 import { InMemoryDocumentConsumer } from '../documents/adapters/inbound/messaging/in-memory-consumer';
+import { ProcessMessageDispatcher } from '../documents/adapters/inbound/messaging/process-message-dispatcher';
 import { RelayLoop } from '../documents/adapters/inbound/messaging/relay-loop';
 import { AUTH_OPTIONS, type AuthOptions } from '../shared/auth/auth-options';
 import { JwtAuthGuard } from '../shared/auth/jwt-auth.guard';
@@ -85,7 +86,7 @@ export interface WorkerOptions {
 export class WorkerModule {
   static register(
     adapters: Provider[],
-    consumers: Provider[] = [InMemoryDocumentConsumer],
+    consumers: Provider[] = [InMemoryDocumentConsumer, ProcessMessageDispatcher],
     options: WorkerOptions = {},
   ): DynamicModule {
     return {

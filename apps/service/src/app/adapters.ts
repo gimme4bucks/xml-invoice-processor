@@ -36,6 +36,7 @@ import { rabbitMqProviders } from '../documents/adapters/outbound/rabbitmq/rabbi
 import { RandomIdGenerator, SystemClock } from '../documents/adapters/outbound/system/system';
 import { validationProviders } from '../documents/adapters/outbound/validation/validation-providers';
 import { InMemoryDocumentConsumer } from '../documents/adapters/inbound/messaging/in-memory-consumer';
+import { ProcessMessageDispatcher } from '../documents/adapters/inbound/messaging/process-message-dispatcher';
 import { messagingConsumers } from '../documents/adapters/inbound/messaging/rabbitmq-document-consumer';
 import type { AppConfig } from '../shared/config';
 
@@ -117,5 +118,7 @@ export function adapterProviders(config: AppConfig, role: ProcessRole): Provider
 
 /** The worker's inbound adapter: what feeds messages to ProcessDocument. */
 export function consumerProviders(config: AppConfig): Provider[] {
-  return config.ADAPTERS === 'in-memory' ? [InMemoryDocumentConsumer] : messagingConsumers;
+  return config.ADAPTERS === 'in-memory'
+    ? [InMemoryDocumentConsumer, ProcessMessageDispatcher]
+    : messagingConsumers;
 }
