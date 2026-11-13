@@ -31,10 +31,12 @@ const unauthenticated = () =>
   });
 
 let server: ReturnType<typeof vi.fn<typeof fetch>>;
+const urlOf = (input: RequestInfo | URL) =>
+  new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
 let expiresIn: number;
 let documents: () => Response;
 const calls = (path: string) =>
-  server.mock.calls.filter(([url]) => new URL(String(url)).pathname === path);
+  server.mock.calls.filter(([input]) => urlOf(input).pathname === path);
 
 /** A sign-in started in this tab, and the IdP's redirect back with a code (RFC 9207 `iss`). */
 async function returnFromIdp(overrides: Record<string, string> = {}): Promise<void> {
@@ -55,7 +57,7 @@ beforeEach(() => {
   expiresIn = 900;
   documents = () => Response.json({ items: [document] });
   server = vi.fn<typeof fetch>(async (input) => {
-    const url = new URL(String(input));
+    const url = urlOf(input);
     if (url.href === 'https://idp.test/token') {
       return Response.json({
         access_token: ACCESS_TOKEN,
