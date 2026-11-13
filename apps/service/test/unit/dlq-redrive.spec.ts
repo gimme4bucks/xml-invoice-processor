@@ -1,12 +1,17 @@
 import type { CommandBus } from '@nestjs/cqrs';
 import { describe, expect, it, vi } from 'vitest';
+import { redriveProviders } from '../../src/app/adapters';
 import {
   type DeadLetter,
   DeadLetterSource,
   DlqRedrive,
   leftInDlq,
   parseRedriveArgs,
+  type RedriveReport,
+  redriveExitCode,
+  redriveSummary,
 } from '../../src/documents/adapters/inbound/messaging/dlq-redrive';
+import { loadConfig } from '../../src/shared/config';
 import type { RequeueDocumentCommand } from '../../src/documents/application/commands/requeue-document';
 import type { OutboxMessage } from '../../src/documents/application/ports';
 import { createHarness, type Harness, invoice } from './support/harness';
@@ -242,5 +247,51 @@ describe('xip redrive arguments', () => {
 
   it.each([[['--limit', '0']], [['--limit', 'all']], [['--force']]])('refuses %j', (args) => {
     expect(() => parseRedriveArgs(args)).toThrow(/Usage: xip redrive/);
+  });
+});
+
+describe('xip redrive output', () => {
+  const report: RedriveReport = {
+    dryRun: false,
+    requeued: [{ documentId: 'd-1', status: 'Processing', attempt: 2 }],
+    alreadyFinal: [{ documentId: 'd-2', status: 'Completed' }],
+    notFound: ['d-3'],
+    failed: [],
+    malformed: ['m-4'],
+  };
+
+  it('summarises counts and IDs only', () => {
+    expect(redriveSummary(report)).toEqual({
+      dryRun: false,
+      counts: { requeued: 1, alreadyFinal: 1, notFound: 1, failed: 0, malformed: 1, leftInDlq: 2 },
+      requeued: report.requeued,
+      alreadyFinal: report.alreadyFinal,
+      notFound: ['d-3'],
+      failed: [],
+      malformed: ['m-4'],
+    });
+  });
+
+  it('exits non-zero when something stayed behind in the DLQ', () => {
+    expect(redriveExitCode(report)).toBe(1);
+    expect(redriveExitCode({ ...report, notFound: [], malformed: [] })).toBe(0);
+  });
+
+  it('a dry run leaves everything by design and exits 0', () => {
+    expect(redriveExitCode({ ...report, dryRun: true })).toBe(0);
+  });
+
+  it('needs the real adapters, Postgres and RabbitMQ', () => {
+    const real = { ADAPTERS: 'real', DATABASE_URL: 'postgresql://x', AMQP_URL: 'amqp://x' };
+    expect(() => redriveProviders(loadConfig({ ...real, ADAPTERS: 'in-memory' }))).toThrow(
+      /ADAPTERS=real/,
+    );
+    expect(() => redriveProviders(loadConfig({ ...real, AMQP_URL: undefined }))).toThrow(
+      /AMQP_URL/,
+    );
+    expect(() => redriveProviders(loadConfig({ ...real, DATABASE_URL: undefined }))).toThrow(
+      /DATABASE_URL/,
+    );
+    expect(redriveProviders(loadConfig(real), real).length).toBeGreaterThan(0);
   });
 });

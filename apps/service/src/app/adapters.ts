@@ -143,3 +143,10 @@ export function sweeperSettings(
   const longestRetryDelayMs = Math.max(...loadRabbitMqConfig(env).retryDelaysMs);
   return loadSweeperSettings(env, longestRetryDelayMs + schematronTimeoutMs(env));
 }
+
+export function redriveProviders(
+  _config: AppConfig,
+  _env: NodeJS.ProcessEnv = process.env,
+): Provider[] {
+  throw new Error('redriveProviders is not implemented yet');
+}

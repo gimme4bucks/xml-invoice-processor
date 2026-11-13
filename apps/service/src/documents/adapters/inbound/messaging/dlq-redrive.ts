@@ -52,6 +52,14 @@ export function leftInDlq(report: RedriveReport): number {
   return report.notFound.length + report.failed.length + report.malformed.length;
 }
 
+export function redriveSummary(_report: RedriveReport): Record<string, unknown> {
+  throw new Error('redriveSummary is not implemented yet');
+}
+
+export function redriveExitCode(_report: RedriveReport): number {
+  throw new Error('redriveExitCode is not implemented yet');
+}
+
 const USAGE = 'Usage: xip redrive [--dry-run] [--limit N]';
 
 export function parseRedriveArgs(args: string[]): RedriveOptions {
