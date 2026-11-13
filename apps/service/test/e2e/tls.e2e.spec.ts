@@ -94,7 +94,7 @@ describe('TLS at the edge (e2e)', () => {
     expect(response.body).toContain('HTTP request to an HTTPS server');
   });
 
-  it('publishes the API and the IdP only through the edge', async () => {
+  it('publishes the API, the IdP and the support app only through the edge', async () => {
     const { stdout } = await promisify(execFile)(
       'docker',
       ['compose', '--profile', 'full', 'config', '--format', 'json'],
@@ -110,7 +110,9 @@ describe('TLS at the edge (e2e)', () => {
 
     expect(published('api')).toEqual([]);
     expect(published('mock-idp')).toEqual([]);
-    expect(published('edge').sort()).toEqual(['3443->3443', '4443->4443']);
+    expect(published('web')).toEqual([]);
+    // 5443 is the support app (ADR 0018).
+    expect(published('edge').sort()).toEqual(['3443->3443', '4443->4443', '5443->5443']);
   });
 
   it('runs the edge as a non-root user', async () => {
