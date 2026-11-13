@@ -47,6 +47,7 @@ apps/service/test/
   e2e/                         full stack via docker compose
   chaos/                       hard infrastructure failures against the full stack (pnpm test:chaos)
 apps/mock-idp/                 OAuth2 issuer for dev/demo/e2e: client credentials, and Authorization Code + PKCE for support
+apps/web/                      the support view in the browser: React on Vite, served behind the edge at :5443 (ADR 0018)
 ```
 
 ## Hard rules

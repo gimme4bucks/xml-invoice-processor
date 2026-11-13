@@ -82,3 +82,10 @@ verifies its sha256 and compiles it, unmodified, into a SEF under
 `libxml2-wasm` 0.7.2 (MIT, Copyright (c) 2023 James Lan) parses invoices and validates them
 against the UBL XSD. It bundles libxml2 (MIT, Copyright (C) 1998-2012 Daniel Veillard and the
 Libxml2 Contributors); both licence texts ship with the npm package.
+
+## The support web image (`xml-invoice-processor-web`)
+
+The image serves the support app ([ADR 0018](docs/adr/0018-support-web-app.md)) with Caddy.
+
+- **React and React DOM** (MIT, Copyright (c) Meta Platforms, Inc. and affiliates) are bundled into the app. The build writes the licence texts of every bundled dependency to `third-party-licenses.md`, which is served next to the app.
+- **Caddy** (Apache-2.0, Copyright 2015 Matthew Holt and The Caddy Authors) is the image's base (`caddy:2.11.7-alpine`), unmodified. The edge service uses the same upstream image.

@@ -35,6 +35,7 @@ updates:
     directories:
       - /
       - /apps/mock-idp
+      - /apps/web
     schedule:
       interval: weekly
     cooldown:

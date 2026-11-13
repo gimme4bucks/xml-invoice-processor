@@ -144,7 +144,7 @@ services:
       # otherwise force every http://localhost port to HTTPS for a year after one visit.
       HSTS_MAX_AGE_SECONDS: ${HSTS_MAX_AGE_SECONDS:-300}
       # CORS for the support app's origin, on the read-only /support endpoints only (ADR 0017).
-      # Off when empty, the API's default. The app itself comes in G14; its origin is reserved.
+      # Off when empty, the API's default. The app is the `web` service (ADR 0018).
       CORS_ORIGINS: ${CORS_ORIGINS:-https://localhost:5443}
     # No ports: only reachable through the edge.
     # Not on mock-idp: the API fetches the signing keys on the first request, so it starts
@@ -193,7 +193,7 @@ services:
       # of the fixture invoices. Override MOCK_IDP_CLIENTS in .env for anything else.
       MOCK_IDP_CLIENTS: ${MOCK_IDP_CLIENTS:-{"supplier-client":{"secret":"change-me","org_id":"org-supplier","peppol_id":"0106:11111111","scopes":["documents:submit","documents:read"]},"customer-client":{"secret":"change-me","org_id":"org-customer","peppol_id":"0106:22222222","scopes":["documents:submit","documents:read"]}}}
       # The support app's public client support-web (Authorization Code + PKCE, ADR 0017): its
-      # exact redirect URI (the app's origin, reserved for G14) and a demo support employee.
+      # exact redirect URI (the `web` service's callback, ADR 0018) and a demo support employee.
       MOCK_IDP_SUPPORT_REDIRECT_URIS: ${MOCK_IDP_SUPPORT_REDIRECT_URIS:-https://localhost:5443/callback}
       MOCK_IDP_SUPPORT_USERS: ${MOCK_IDP_SUPPORT_USERS:-{"support-agent":{"password":"change-me"}}}
     # No ports: only reachable through the edge.
