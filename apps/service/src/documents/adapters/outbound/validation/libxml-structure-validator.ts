@@ -7,6 +7,7 @@ import {
   type StructureValidation,
   StructureValidator,
 } from '../../../application/ports';
+import type { DocumentType } from '../../../domain/value-objects';
 import { type Libxml2, loadLibxml2, safeParseOptions } from './libxml2';
 import { UBL_NAMESPACES, validationArtifactsDir } from './ubl';
 
@@ -14,18 +15,27 @@ import { UBL_NAMESPACES, validationArtifactsDir } from './ubl';
 const MAX_ERRORS = 50;
 
 // Virtual paths under which the XSDs are handed to libxml2, so the relative
-// `../common/X.xsd` imports of the main schema resolve from memory, never from disk or network.
+// `../common/X.xsd` imports of the main schemas resolve from memory, never from disk or network.
 const VIRTUAL_ROOT = '/ubl-2.1/';
-const MAIN_SCHEMA = `${VIRTUAL_ROOT}maindoc/UBL-Invoice-2.1.xsd`;
+
+/** The accepted root elements, each with its own UBL 2.1 main schema (ADR 0015). */
+const ROOTS: Record<DocumentType, { namespace: string; schema: string }> = {
+  Invoice: { namespace: UBL_NAMESPACES.ubl, schema: `${VIRTUAL_ROOT}maindoc/UBL-Invoice-2.1.xsd` },
+  CreditNote: {
+    namespace: UBL_NAMESPACES.cn,
+    schema: `${VIRTUAL_ROOT}maindoc/UBL-CreditNote-2.1.xsd`,
+  },
+};
 
 /**
  * Synchronous intake check (ADR 0002): well-formedness, DOCTYPE ban, root element and the
- * official UBL 2.1 Invoice XSD. The schema is compiled once; a validation takes well under 1 ms.
+ * official UBL 2.1 XSD of that root (Invoice or CreditNote). The schemas are compiled once; a
+ * validation takes well under 1 ms.
  */
 export class LibxmlStructureValidator extends StructureValidator implements OnModuleDestroy {
   private constructor(
     private readonly libxml: Libxml2,
-    private readonly xsd: XsdValidator,
+    private readonly schemas: Record<DocumentType, XsdValidator>,
   ) {
     super();
   }
@@ -41,21 +51,30 @@ export class LibxmlStructureValidator extends StructureValidator implements OnMo
         }
       }
     }
-    const main = buffers[MAIN_SCHEMA];
-    if (!main) throw new Error(`UBL Invoice schema not found under ${xsdrt}`);
-
-    // The in-memory provider is only needed while the schema imports are resolved. Removing it
-    // afterwards leaves nothing for an invoice to reach, even if a parse option were wrong.
-    libxml.xmlRegisterInputProvider(new libxml.XmlBufferInputProvider(buffers));
-    try {
-      const schema = libxml.XmlDocument.fromBuffer(main, {
-        url: MAIN_SCHEMA,
-        option: safeParseOptions(libxml),
-      });
+    const compile = (url: string): XsdValidator => {
+      const main = buffers[url];
+      if (!main) throw new Error(`UBL schema ${url} not found under ${xsdrt}`);
+      const schema = libxml.XmlDocument.fromBuffer(main, { url, option: safeParseOptions(libxml) });
       try {
-        return new LibxmlStructureValidator(libxml, libxml.XsdValidator.fromDoc(schema));
+        return libxml.XsdValidator.fromDoc(schema);
       } finally {
         schema.dispose();
+      }
+    };
+
+    // The in-memory provider is only needed while the schema imports are resolved. Removing it
+    // afterwards leaves nothing for a document to reach, even if a parse option were wrong.
+    libxml.xmlRegisterInputProvider(new libxml.XmlBufferInputProvider(buffers));
+    try {
+      const invoice = compile(ROOTS.Invoice.schema);
+      try {
+        return new LibxmlStructureValidator(libxml, {
+          Invoice: invoice,
+          CreditNote: compile(ROOTS.CreditNote.schema),
+        });
+      } catch (error) {
+        invoice.dispose();
+        throw error;
       }
     } finally {
       libxml.xmlCleanupInputProvider();
@@ -80,7 +99,7 @@ export class LibxmlStructureValidator extends StructureValidator implements OnMo
   }
 
   onModuleDestroy(): void {
-    this.xsd.dispose();
+    for (const schema of Object.values(this.schemas)) schema.dispose();
   }
 
   private check(doc: XmlDocument): StructureValidation {
@@ -89,30 +108,31 @@ export class LibxmlStructureValidator extends StructureValidator implements OnMo
       return invalid('doctype-forbidden', [{ message: 'A DOCTYPE declaration is not allowed' }]);
     }
     const { name, namespaceUri } = doc.root;
-    if (name === 'CreditNote' && namespaceUri === UBL_NAMESPACES.cn) {
-      return invalid('unsupported-document-type', [
-        { message: 'UBL CreditNote documents are not supported yet; only Invoice is accepted' },
-      ]);
-    }
-    if (name !== 'Invoice' || namespaceUri !== UBL_NAMESPACES.ubl) {
+    const documentType = documentTypes.find(
+      (type) => name === type && namespaceUri === ROOTS[type].namespace,
+    );
+    if (!documentType) {
+      const expected = documentTypes.map((type) => `{${ROOTS[type].namespace}}${type}`);
       return invalid('schema-invalid', [
         {
-          message: `The root element must be {${UBL_NAMESPACES.ubl}}Invoice, not {${namespaceUri}}${name}`,
+          message: `The root element must be ${expected.join(' or ')}, not {${namespaceUri}}${name}`,
           line: doc.root.line,
         },
       ]);
     }
     try {
-      this.xsd.validate(doc);
+      this.schemas[documentType].validate(doc);
     } catch (error) {
       if (error instanceof this.libxml.XmlValidateError) {
         return invalid('schema-invalid', toStructureErrors(error.details));
       }
       throw error;
     }
-    return { valid: true, documentType: 'Invoice' };
+    return { valid: true, documentType };
   }
 }
+
+const documentTypes = Object.keys(ROOTS) as DocumentType[];
 
 function invalid(
   reason: Extract<StructureValidation, { valid: false }>['reason'],

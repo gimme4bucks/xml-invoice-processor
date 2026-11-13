@@ -3,7 +3,8 @@ import { DomainError } from './errors';
 /** Purchase or sales invoice, seen from the organisation that submitted it. */
 export type InvoiceDirection = 'purchase' | 'sales';
 
-export type DocumentType = 'Invoice';
+/** The UBL 2.1 document: an invoice or a credit note (Peppol BIS Billing 3.0). */
+export type DocumentType = 'Invoice' | 'CreditNote';
 
 export type DocumentStatus = 'Received' | 'Processing' | 'Completed' | 'Failed';
 
