@@ -199,6 +199,19 @@ During the implementation I delegated layer 4, the merge decision, to the coordi
 | G07 integration and e2e    | 32 min                             | 123   | $10.04        |
 | **Total**                  | 2 h 19 min (at most 3 in parallel) | 523   | $50.37        |
 
+**After v1.0.0: the extras for v1.1.0** (2026-11-13). They were measured the same way, and every one of these sessions worked test-first. G08's review round ran as a resumed session, so G08 counts two runs. G10's time is mostly spent waiting on its own chaos runs of 7 to 9 minutes each.
+
+| Work package          | Time                               | Turns | Reported cost |
+| --------------------- | ---------------------------------- | ----- | ------------- |
+| G08 HTTPS at the edge | 24 min                             | 90    | $10.72        |
+| G09 unhappy path      | 27 min                             | 111   | $9.34         |
+| G10 chaos tests       | 58 min                             | 95    | $6.38         |
+| G11 credit notes      | 17 min                             | 98    | $6.49         |
+| G12 documents in S3   | 40 min                             | 122   | $9.94         |
+| G13 support access    | 23 min                             | 107   | $8.04         |
+| G14 support view      | 34 min                             | 89    | $7.50         |
+| **Total**             | 3 h 43 min (at most 3 in parallel) | 712   | $58.41        |
+
 ## Time spent
 
 The planning numbers come from the session log; times are approximate. "Agent time" is the wall-clock time of agents working in the background, in parallel with me.
@@ -215,3 +228,5 @@ The planning numbers come from the session log; times are approximate. "Agent ti
 | Phase 3: integration (G07)                  | –                          | ~32 min (~17:34 to ~18:06)                                                                              | One `/goal` session                                                  |
 | Reviews, fixes and documentation            | check-ins                  | ~1 h 30 min (~17:00 to ~18:30)                                                                          | Coordinating session, in parallel with phases 2 and 3                |
 | **Total**                                   | ~5 h 40 min plus check-ins | ~2 h 40 min of wall-clock time after the planning session (~15:50 to ~18:30), plus the spikes during it | One working day from preparation to release                          |
+
+After v1.0.0, the extras for v1.1.0 (G08 to G14) took about 2 h 55 min of wall-clock time on 2026-11-13, from ~10:00 to ~12:55. My own part was the decisions (the order, TDD as a hard rule, the S3 dependency, PKCE for support, React), check-ins and a sign-in test in the browser. The coordinating session wrote the goals, added the dependencies, reviewed and merged every PR, and kept the documentation current.
