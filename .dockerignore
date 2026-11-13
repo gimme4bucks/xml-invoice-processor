@@ -15,6 +15,7 @@ apps/service/validation-artifacts/generated
 # Tests are not part of an image.
 apps/*/test
 **/*.spec.ts
+**/*.spec.tsx
 
 .DS_Store
 .idea

@@ -34,6 +34,11 @@ All notable changes to this project. The format follows
   - Every support request writes an audit line.
   - Support tokens are rate-limited per user.
   - CORS is off unless `CORS_ORIGINS` names the frontend's origin.
+- **Support view in the browser** ([ADR 0018](docs/adr/0018-support-web-app.md)):
+  - A React app at `https://localhost:5443`. Support staff sign in with Authorization Code + PKCE, and the token is kept in memory only.
+  - It shows the document list across organisations, with filters and paging, and a detail view with failure reasons and history.
+  - A strict CSP whose `connect-src` names only the API and the IdP, configured at runtime.
+  - A third image, `xml-invoice-processor-web`: Caddy, non-root, with a read-only filesystem.
 - **Chaos tests** (`pnpm test:chaos`, a separate CI job): five hard failure scenarios against the full stack over HTTPS. Each proves that no document is lost or processed twice:
   - a long Postgres outage, then `xip redrive`;
   - a lost message, recovered by the sweeper;
@@ -48,8 +53,8 @@ All notable changes to this project. The format follows
 - **Organisation endpoints:** a token without `org_id` gets 403 `ORGANISATION_TOKEN_REQUIRED`. A token with neither `org_id` nor `peppol_id` used to get 401.
 - **Blobs:** `blobs.content` is nullable, because with S3 the row holds only the reference (migration `20261113120000_blob_references`). The Postgres blob store now also checks the sha256 on read.
 
-- **Ports:** the full compose stack publishes only the edge's HTTPS ports. The API and the mock IdP no longer listen on host ports 3000 and 4000.
-- **Dependencies:** NestJS 12.4.2, Vite 8.3.7, jose 6.2.17 and typescript-eslint 8.72.2; `@aws-sdk/client-s3` 3.1165.0 is new.
+- **Ports:** the full compose stack publishes only the edge's HTTPS ports: 3443 (API), 4443 (IdP) and 5443 (support view). The API and the mock IdP no longer listen on host ports 3000 and 4000.
+- **Dependencies:** NestJS 12.4.2, Vite 8.3.7, jose 6.2.17 and typescript-eslint 8.72.2. New: `@aws-sdk/client-s3` 3.1165.0, and React 19.3.1 for the support view.
 
 ## [1.0.0] - 2026-11-12
 
