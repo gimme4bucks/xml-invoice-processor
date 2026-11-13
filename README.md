@@ -409,8 +409,10 @@ In rough order of value for production:
    ([ADR 0014](docs/adr/0014-recovering-stuck-documents.md)).
 2. **Metrics and tracing** (OpenTelemetry): outbox lag, queue depth, processing time, failures per
    rule; trace context carried in the message headers.
-3. **Object storage:** an S3 adapter for the `BlobStore` port, written through the outbox so the
-   transaction guarantee stays ([ADR 0011](docs/adr/0011-document-storage-in-postgresql-behind-blobstore-port.md)).
+3. **Object storage, part two:** the S3 adapter is in
+   ([ADR 0016](docs/adr/0016-documents-in-s3.md)); next are copying existing documents from
+   Postgres to S3, an S3 Inventory report for the orphan collector instead of listing the bucket,
+   and SSE-KMS with Object Lock for the 7-year retention.
 4. **Other formats and business checks on the canonical model:** credit notes are done
    ([ADR 0015](docs/adr/0015-credit-notes.md)); next are other formats (such as UN/CEFACT CII),
    each with its own mapper into the canonical model, a business-level duplicate check, and checking

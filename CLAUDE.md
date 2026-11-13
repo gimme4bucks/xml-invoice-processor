@@ -24,9 +24,9 @@ ADRs live in `docs/adr/`, spike evidence in `docs/spikes/`. In short:
 - **Transactional outbox.** Only the outbox relay publishes to RabbitMQ. Consumers are idempotent through the aggregate state plus optimistic concurrency on `(stream_id, version)`. There is no inbox table and no saga.
 - **RabbitMQ through our own adapter** (amqplib + amqp-connection-manager; spike 02b).
 - **Idempotency:** a required `Idempotency-Key` per organisation, plus a SHA-256 content hash. A byte-identical file sent again under a new key is a 409.
-- **Auth:** OAuth2 client-credentials JWTs from a mock IdP. Claims are `sub`, `org_id`, `peppol_id` and `scope` (`documents:submit`, `documents:read`). The organisation **always comes from the token**. Another organisation's document returns 404. Purchase vs sales is derived from `peppol_id` vs the invoice's supplier/customer EndpointID.
+- **Auth:** OAuth2 client-credentials JWTs from a mock IdP. Claims are `sub`, `org_id`, `peppol_id` and `scope` (`documents:submit`, `documents:read`). The organisation **always comes from the token**. Another organisation's document returns 404. Purchase vs sales is derived from `peppol_id` vs the invoice's supplier/customer EndpointID. Support staff sign in with Authorization Code + PKCE (ADR 0017): their token has scope `support:read` and no `org_id`, and reaches only the read-only `/support` endpoints, which never return the XML or the result. Organisation tokens never reach them.
 - **Responses:** JSON. Errors are **RFC 9457 Problem Details** with a stable `code`.
-- **Data access:** Prisma 7. Documents are stored in Postgres behind the `BlobStore` port (S3 later).
+- **Data access:** Prisma 7. Documents sit behind the `BlobStore` port: in Postgres by default, in S3 with `BLOB_STORE=s3` (the full stack; ADR 0016). The object is uploaded under its sha256 before the transaction that references it commits; an orphan collector removes unreferenced objects.
 - **Process VAT check:** a fake VIES adapter. `invalid` means permanent `Failed`; unavailable means retry with backoff through the outbox and the retry delay queues.
 
 ## Layout
@@ -36,7 +36,7 @@ apps/service/src/
   documents/domain/            pure TypeScript: Document aggregate, events, value objects
   documents/application/       use cases (commands/queries), ports, relay
   documents/adapters/inbound/  HTTP controllers, message consumers, relay loop
-  documents/adapters/outbound/ in-memory, postgres, rabbitmq, validation, vies, system
+  documents/adapters/outbound/ in-memory, postgres, rabbitmq, s3, validation, vies, system
   app/                         composition root (port bindings, Nest modules)
   shared/                      config, cross-cutting HTTP concerns (auth, problem details, logging)
   main-api.ts / main-worker.ts two processes, one image
@@ -45,7 +45,8 @@ apps/service/test/
   unit/                        in-memory runs of the contracts + walking skeleton
   contract/                    real-adapter runs of the contracts (needs infra)
   e2e/                         full stack via docker compose
-apps/mock-idp/                 OAuth2 client-credentials issuer for dev/demo/e2e
+  chaos/                       hard infrastructure failures against the full stack (pnpm test:chaos)
+apps/mock-idp/                 OAuth2 issuer for dev/demo/e2e: client credentials, and Authorization Code + PKCE for support
 ```
 
 ## Hard rules
@@ -53,7 +54,7 @@ apps/mock-idp/                 OAuth2 client-credentials issuer for dev/demo/e2e
 1. **Layers** (enforced by `pnpm depcruise`):
    - The domain imports nothing outside the domain.
    - The application imports only the domain, Node built-ins and `@nestjs/common` / `@nestjs/cqrs`.
-   - Prisma is used only in `adapters/outbound/postgres`; amqplib only in the rabbitmq/messaging adapters.
+   - Prisma is used only in `adapters/outbound/postgres`; amqplib only in the rabbitmq/messaging adapters; the AWS SDK only in `adapters/outbound/s3`.
    - Port bindings live only in `src/app`.
 2. **Every write goes through `UnitOfWork.run` and passes its `tx`.** Event, read model, blob, outbox and idempotency record are written in one transaction.
 3. **Only the outbox relay publishes.** If something needs a message, it writes an outbox row in the same unit of work. Never use the in-memory `EventBus`, sagas or the `@nestjs/cqrs` `AggregateRoot` for anything that must not be lost.
@@ -65,7 +66,7 @@ apps/mock-idp/                 OAuth2 client-credentials issuer for dev/demo/e2e
    - The one exception is the DLQ: `xip redrive` releases messages with `nack` for the same reason in reverse. The DLQ has a default limit of 20 and no dead-letter target, so a message released with `reject` would eventually be dropped silently (ADR 0014).
    - Fail fast (exit) on an unexpected channel close or consumer cancel.
 6. **Security:**
-   - Organisation scoping only from token claims, never from the URL or body.
+   - Organisation scoping only from token claims, never from the URL or body. The only reads across organisations are the `/support` endpoints, for support tokens (ADR 0017).
    - Reject any DOCTYPE; never resolve external entities or fetch over the network while parsing.
    - Never log XML content, amounts, VAT numbers or tokens; log IDs only.
    - No secrets in the repo: use `.env` (gitignored) and `.env.example`.
@@ -91,6 +92,7 @@ pnpm -F @xip/service prisma:generate # generate the Prisma client into src/gener
 pnpm -F @xip/service prisma:migrate  # apply migrations to DATABASE_URL
 pnpm test                            # unit project: domain, handlers, in-memory contracts, walking skeleton
 pnpm test:contract                   # contract project: real adapters (needs infra + migrations)
+pnpm test:chaos                      # chaos project: five failure scenarios against the full stack (~8 min)
 pnpm verify                          # what CI's verify job runs: format, lint, types, depcruise, unit, build
 pnpm tls:ca                          # export the HTTPS edge's root certificate (full stack) to .tls/, for curl --cacert
 pnpm redrive [--dry-run] [--limit N] # requeue dead-lettered documents through the outbox (ADR 0014; `xip redrive` in the image)
@@ -108,6 +110,7 @@ Copy `.env.example` to `.env` (repo root and `apps/service/`) for local work.
   - A real adapter is done when it passes the same suite.
 - **Walking skeleton:** `test/unit/walking-skeleton.spec.ts` must stay green. It proves the API and worker wiring end to end.
 - **E2E (G07):** the full stack via compose, including infrastructure outages.
+- **Chaos (G10):** hard failures against the full stack (a long Postgres outage, lost messages, killed processes), asserting that no document is lost or processed twice. Its own CI job.
 
 ## Test-driven development (red, green, refactor)
 

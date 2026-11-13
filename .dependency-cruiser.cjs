@@ -55,6 +55,13 @@ module.exports = {
       to: { path: 'node_modules/(amqplib|amqp-connection-manager)/' },
     },
     {
+      name: 'aws-sdk-only-in-s3-adapter',
+      comment: 'The bucket is reached only through the S3 adapter (ADR 0016).',
+      severity: 'error',
+      from: { path: SRC, pathNot: [`${ADAPTERS}/outbound/s3/`] },
+      to: { path: 'node_modules/@aws-sdk/' },
+    },
+    {
       name: 'no-circular',
       severity: 'error',
       from: { path: SRC },
