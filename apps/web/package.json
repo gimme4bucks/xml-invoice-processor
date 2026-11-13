@@ -1,0 +1,22 @@
+{
+  "name": "@xip/web",
+  "private": true,
+  "description": "Support view in the browser: sign in with Authorization Code + PKCE and follow documents across organisations (read-only).",
+  "license": "UNLICENSED",
+  "type": "module",
+  "dependencies": {
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "10.4.2",
+    "@testing-library/react": "16.3.3",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.3.0",
+    "jsdom": "29.1.1",
+    "typescript": "5.9.3",
+    "vite": "8.3.7",
+    "vitest": "5.1.0"
+  }
+}
