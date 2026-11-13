@@ -1,4 +1,4 @@
-import { createIdp, parseClients } from './idp';
+import { createIdp, parseClients, parseSupportClient, SUPPORT_CLIENT_ID } from './idp';
 
 // Mock IdP for dev, demo and e2e only. AUTH_ISSUER and AUTH_AUDIENCE match the API's settings.
 async function main(): Promise<void> {
@@ -6,10 +6,20 @@ async function main(): Promise<void> {
   const issuer = process.env.AUTH_ISSUER ?? `http://localhost:${port}`;
   const audience = process.env.AUTH_AUDIENCE ?? 'xml-invoice-processor';
   const clients = parseClients(process.env.MOCK_IDP_CLIENTS);
+  const support = parseSupportClient(
+    process.env.MOCK_IDP_SUPPORT_REDIRECT_URIS,
+    process.env.MOCK_IDP_SUPPORT_USERS,
+  );
 
-  const server = await createIdp({ issuer, audience, clients });
+  const server = await createIdp({ issuer, audience, clients, support });
   server.listen(port, '0.0.0.0', () => {
-    console.log(JSON.stringify({ msg: 'mock-idp listening', port, issuer, audience }));
+    // Redirect URIs and user names only; never a password.
+    const supportClient = support
+      ? { clientId: SUPPORT_CLIENT_ID, redirectUris: support.redirectUris }
+      : 'off';
+    console.log(
+      JSON.stringify({ msg: 'mock-idp listening', port, issuer, audience, supportClient }),
+    );
   });
   const stop = () => {
     server.close(() => process.exit(0));

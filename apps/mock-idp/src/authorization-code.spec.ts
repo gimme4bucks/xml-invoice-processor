@@ -75,7 +75,7 @@ describe('mock IdP: Authorization Code + PKCE', () => {
   };
 
   const authorize = (params: Record<string, string>) =>
-    fetch(`${base}/authorize?${new URLSearchParams(params)}`, { redirect: 'manual' });
+    fetch(`${base}/authorize?${new URLSearchParams(params).toString()}`, { redirect: 'manual' });
 
   const login = (params: Record<string, string>, credentials = user) =>
     fetch(`${base}/authorize`, {
