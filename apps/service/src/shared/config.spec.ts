@@ -12,4 +12,14 @@ describe('loadConfig', () => {
     expect(loadConfig({}).HSTS_MAX_AGE_SECONDS).toBe(31_536_000);
     expect(loadConfig({ HSTS_MAX_AGE_SECONDS: '300' }).HSTS_MAX_AGE_SECONDS).toBe(300);
   });
+
+  it('keeps CORS off unless CORS_ORIGINS lists exact origins', () => {
+    expect(loadConfig({}).CORS_ORIGINS).toEqual([]);
+    expect(
+      loadConfig({ CORS_ORIGINS: 'https://support.test, https://localhost:5443' }).CORS_ORIGINS,
+    ).toEqual(['https://support.test', 'https://localhost:5443']);
+    for (const invalid of ['*', 'support.test', 'https://support.test/', 'https://a.test/path']) {
+      expect(() => loadConfig({ CORS_ORIGINS: invalid }), invalid).toThrow();
+    }
+  });
 });

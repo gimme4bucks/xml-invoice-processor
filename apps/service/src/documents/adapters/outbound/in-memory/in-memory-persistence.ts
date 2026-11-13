@@ -86,8 +86,18 @@ export class InMemoryDocumentViews extends DocumentViews {
       documentType?: DocumentType;
     },
   ): Promise<DocumentPage> {
+    return this.listAcrossOrganisations({ ...options, organisationId });
+  }
+
+  async listAcrossOrganisations(options: {
+    limit: number;
+    cursor?: string;
+    organisationId?: string;
+    status?: DocumentStatus;
+    documentType?: DocumentType;
+  }): Promise<DocumentPage> {
     const all = [...this.db.tables.views.values()]
-      .filter((v) => v.organisationId === organisationId)
+      .filter((v) => !options.organisationId || v.organisationId === options.organisationId)
       .filter((v) => !options.status || v.status === options.status)
       .filter((v) => !options.documentType || v.documentType === options.documentType)
       .sort(

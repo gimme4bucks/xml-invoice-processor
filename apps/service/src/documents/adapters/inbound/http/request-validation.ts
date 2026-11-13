@@ -34,6 +34,13 @@ export const listDocumentsQuerySchema = z.strictObject({
 
 export type ListDocumentsQueryParams = z.infer<typeof listDocumentsQuerySchema>;
 
+/** Support's list (ADR 0017): every organisation, or one, as in the `org_id` claim. */
+export const supportListDocumentsQuerySchema = listDocumentsQuerySchema.extend({
+  organisationId: z.string().min(1).max(128).optional(),
+});
+
+export type SupportListDocumentsQueryParams = z.infer<typeof supportListDocumentsQuerySchema>;
+
 /** One request header by (lower-case) name; unlike @Headers() it accepts validation pipes. */
 export const RequestHeader = createParamDecorator(
   (name: string, context: ExecutionContext): unknown =>

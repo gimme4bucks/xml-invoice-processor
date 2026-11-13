@@ -266,6 +266,53 @@ export function describePersistenceContract(
       });
     });
 
+    describe('DocumentViews.listAcrossOrganisations (support, ADR 0017)', () => {
+      const at = (minute: number) => new Date(Date.UTC(2026, 10, 12, 10, minute));
+
+      it('lists every organisation newest first with pagination and the optional filters', async () => {
+        const [a1, b1, a2, b2] = [randomUUID(), randomUUID(), randomUUID(), randomUUID()];
+        await h.uow.run(async (tx) => {
+          await h.views.upsert(view(a1, { organisationId: 'org-a', receivedAt: at(1) }), tx);
+          await h.views.upsert(
+            view(b1, { organisationId: 'org-b', receivedAt: at(2), status: 'Failed' }),
+            tx,
+          );
+          await h.views.upsert(
+            view(a2, { organisationId: 'org-a', receivedAt: at(3), documentType: 'CreditNote' }),
+            tx,
+          );
+          await h.views.upsert(view(b2, { organisationId: 'org-b', receivedAt: at(4) }), tx);
+        });
+
+        const first = await h.views.listAcrossOrganisations({ limit: 3 });
+        expect(first.items.map((v) => v.documentId)).toEqual([b2, a2, b1]);
+        expect(first.items.map((v) => v.organisationId)).toEqual(['org-b', 'org-a', 'org-b']);
+        expect(first.nextCursor).toBeDefined();
+        const second = await h.views.listAcrossOrganisations({
+          limit: 3,
+          cursor: first.nextCursor,
+        });
+        expect(second.items.map((v) => v.documentId)).toEqual([a1]);
+        expect(second.nextCursor).toBeUndefined();
+
+        const orgA = await h.views.listAcrossOrganisations({ limit: 10, organisationId: 'org-a' });
+        expect(orgA.items.map((v) => v.documentId)).toEqual([a2, a1]);
+        const failed = await h.views.listAcrossOrganisations({ limit: 10, status: 'Failed' });
+        expect(failed.items.map((v) => v.documentId)).toEqual([b1]);
+        const creditNotes = await h.views.listAcrossOrganisations({
+          limit: 10,
+          documentType: 'CreditNote',
+        });
+        expect(creditNotes.items.map((v) => v.documentId)).toEqual([a2]);
+        const none = await h.views.listAcrossOrganisations({
+          limit: 10,
+          organisationId: 'org-b',
+          documentType: 'CreditNote',
+        });
+        expect(none).toEqual({ items: [] });
+      });
+    });
+
     describe('DocumentViews.findStuck (sweeper)', () => {
       const at = (hhmm: string) => new Date(`2026-11-12T${hhmm}:00.000Z`);
       const process = (documentId: string): OutboxMessage => ({

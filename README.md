@@ -156,16 +156,21 @@ docker compose ps api mock-idp               # no host ports: only the edge publ
 
 ## API
 
-All endpoints need an OAuth2 bearer token (client credentials). The organisation always comes from
-the token, never from the URL or the body.
+All endpoints need an OAuth2 bearer token. Organisations use client credentials; the organisation
+always comes from the token, never from the URL or the body. Support staff sign in with
+Authorization Code + PKCE and get a token with `support:read` and no organisation, which only
+reaches the read-only `/support` endpoints ([ADR 0017](docs/adr/0017-support-access-with-pkce.md)).
 
-| Method and path               | Scope              | Purpose                                                                                                                                 |
-| ----------------------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `POST /documents`             | `documents:submit` | Submit one invoice or credit note (`application/xml`, UTF-8, at most 1 MiB, `Idempotency-Key` required). Answers `202` with `Location`. |
-| `GET /documents`              | `documents:read`   | Your organisation's documents, newest first (`status`, `type`, `limit`, `cursor`).                                                      |
-| `GET /documents/{id}`         | `documents:read`   | Document type (`Invoice` or `CreditNote`), status, direction (purchase or sales), attempts and failure reason.                          |
-| `GET /documents/{id}/result`  | `documents:read`   | The processing result once `Completed`: the canonical JSON `invoice` or `creditNote`.                                                   |
-| `GET /documents/{id}/history` | `documents:read`   | The document's event stream: the audit trail.                                                                                           |
+| Method and path                       | Scope              | Purpose                                                                                                                                 |
+| ------------------------------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /documents`                     | `documents:submit` | Submit one invoice or credit note (`application/xml`, UTF-8, at most 1 MiB, `Idempotency-Key` required). Answers `202` with `Location`. |
+| `GET /documents`                      | `documents:read`   | Your organisation's documents, newest first (`status`, `type`, `limit`, `cursor`).                                                      |
+| `GET /documents/{id}`                 | `documents:read`   | Document type (`Invoice` or `CreditNote`), status, direction (purchase or sales), attempts and failure reason.                          |
+| `GET /documents/{id}/result`          | `documents:read`   | The processing result once `Completed`: the canonical JSON `invoice` or `creditNote`.                                                   |
+| `GET /documents/{id}/history`         | `documents:read`   | The document's event stream: the audit trail.                                                                                           |
+| `GET /support/documents`              | `support:read`     | Support: documents of every organisation, newest first (`organisationId`, `status`, `type`, `limit`, `cursor`).                         |
+| `GET /support/documents/{id}`         | `support:read`     | Support: any organisation's document with its `organisationId`; metadata only, never the XML or the result.                             |
+| `GET /support/documents/{id}/history` | `support:read`     | Support: any organisation's event stream.                                                                                               |
 
 Errors are [RFC 9457 Problem Details](https://www.rfc-editor.org/rfc/rfc9457) with a stable
 `code` that clients can branch on, plus a `correlationId`. The full catalogue is in the OpenAPI
@@ -331,6 +336,14 @@ order it was made, is in the [decision log](docs/decision-log.md).
 - JWTs are verified against the IdP's JWKS: issuer, audience, expiry, and only `ES256`. Scopes per
   route; a route without a scope declaration fails closed.
 - The organisation is taken from the token only. Another organisation's document answers `404`.
+- Support access ([ADR 0017](docs/adr/0017-support-access-with-pkce.md)): support staff sign in
+  at the IdP with Authorization Code + PKCE (S256 only, `state` required, single-use 60-second
+  codes bound to the client, the redirect URI and the challenge, exact redirect URIs, no open
+  redirects) from a public client without a secret. Their token has `support:read` and no
+  `org_id`. Organisation and support tokens are kept apart in both directions (`403
+ORGANISATION_TOKEN_REQUIRED`, `403 SUPPORT_TOKEN_REQUIRED`). The support endpoints are read-only,
+  never return the XML or the processing result, are rate-limited per employee (`sub`), and write
+  one audit line per request (`sub`, endpoint, document id or filters, correlation id).
 - XML: any DOCTYPE is rejected, external entities are never resolved and the parser never touches
   the network (`NONET | NO_XXE`). The body is read only after authentication, at most 1 MiB, UTF-8 only.
 - HTTPS only, ending at a Caddy reverse proxy (the `edge`, [ADR 0013](docs/adr/0013-tls-at-the-edge.md)).
@@ -343,9 +356,12 @@ order it was made, is in the [decision log](docs/decision-log.md).
   its address with `X-Forwarded-For`. Responses carry `Strict-Transport-Security`: a year by
   default, five minutes in the compose stack (`HSTS_MAX_AGE_SECONDS`), so that a browser applying
   HSTS to `localhost` is not pinned to HTTPS for a year.
-- Rate limit per organisation (120 requests a minute by default), helmet headers, no CORS.
-- Logs contain IDs only: never XML content, amounts, VAT numbers or tokens (the `Authorization`
-  header is redacted). Every log line carries the correlation id.
+- Rate limit per organisation (120 requests a minute by default), helmet headers. CORS is off by
+  default; `CORS_ORIGINS` (exact origins) opens only the support endpoints, for `GET` with a
+  bearer token and without credentials. The compose stack opens them for the support app's
+  origin, `https://localhost:5443`.
+- Logs contain IDs only: never XML content, amounts, VAT numbers, tokens, authorization codes,
+  code verifiers or passwords (the `Authorization` header is redacted). Every log line carries the correlation id.
 - No secrets in the repository; the containers run as a non-root user on a read-only filesystem.
 - Dependencies are pinned exactly, must be at least 3 days old, install scripts are blocked by
   default, `pnpm audit` runs in CI and GitHub Actions are pinned to commit SHAs.

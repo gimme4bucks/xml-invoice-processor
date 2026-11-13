@@ -19,6 +19,18 @@ export const problemCodes = {
     title: 'Insufficient scope',
     description: 'The token is valid but lacks the scope this operation requires.',
   },
+  ORGANISATION_TOKEN_REQUIRED: {
+    status: 403,
+    title: 'Organisation token required',
+    description:
+      'The token carries no `org_id` (a support token): it cannot use the organisation endpoints.',
+  },
+  SUPPORT_TOKEN_REQUIRED: {
+    status: 403,
+    title: 'Support token required',
+    description:
+      'The support endpoints need a support token (`support:read`, no `org_id`); organisation tokens cannot use them.',
+  },
   DOCUMENT_NOT_FOUND: {
     status: 404,
     title: 'Document not found',
@@ -84,7 +96,8 @@ export const problemCodes = {
   RATE_LIMITED: {
     status: 429,
     title: 'Too many requests',
-    description: 'Rate limit for your organisation exceeded; retry after `Retry-After` seconds.',
+    description:
+      'Rate limit for your organisation (a support token: for you) exceeded; retry after `Retry-After` seconds.',
   },
   INTERNAL_ERROR: {
     status: 500,

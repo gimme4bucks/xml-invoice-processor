@@ -7,10 +7,12 @@ import { ProcessDocumentHandler } from '../documents/application/commands/proces
 import { RequeueDocumentHandler } from '../documents/application/commands/requeue-document';
 import { SubmitDocumentHandler } from '../documents/application/commands/submit-document';
 import { queryHandlers } from '../documents/application/queries/document-queries';
+import { supportQueryHandlers } from '../documents/application/queries/support-queries';
 import { OutboxRelay } from '../documents/application/relay/outbox-relay';
 import { StuckDocumentSweeper } from '../documents/application/sweeper/stuck-document-sweeper';
 import { DocumentsController } from '../documents/adapters/inbound/http/documents.controller';
 import { HealthController } from '../documents/adapters/inbound/http/health.controller';
+import { SupportDocumentsController } from '../documents/adapters/inbound/http/support.controller';
 import { DlqRedrive } from '../documents/adapters/inbound/messaging/dlq-redrive';
 import { InMemoryDocumentConsumer } from '../documents/adapters/inbound/messaging/in-memory-consumer';
 import { ProcessMessageDispatcher } from '../documents/adapters/inbound/messaging/process-message-dispatcher';
@@ -69,10 +71,11 @@ export class ApiModule {
           throttlerOptions(options.rateLimit ?? { limit: 120, windowMs: 60_000 }),
         ),
       ],
-      controllers: [HealthController, DocumentsController],
+      controllers: [HealthController, DocumentsController, SupportDocumentsController],
       providers: [
         SubmitDocumentHandler,
         ...queryHandlers,
+        ...supportQueryHandlers,
         ...(options.auth ? [{ provide: AUTH_OPTIONS, useValue: options.auth }] : []),
         { provide: APP_FILTER, useClass: ProblemDetailsFilter },
         // Global guards run in this order: the rate limit needs the authenticated organisation.
