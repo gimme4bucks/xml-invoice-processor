@@ -17,6 +17,7 @@
     "test": "pnpm -r test",
     "test:contract": "pnpm -F @xip/service test:contract",
     "e2e": "sh scripts/tls/edge-ca.sh pnpm -F @xip/service test:e2e",
+    "test:chaos": "sh scripts/tls/edge-ca.sh pnpm -F @xip/service test:chaos",
     "verify": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm depcruise && pnpm test && pnpm build",
     "infra:up": "docker compose --profile infra up -d --wait",
     "infra:down": "docker compose --profile infra down",

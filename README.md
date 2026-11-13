@@ -360,8 +360,14 @@ order it was made, is in the [decision log](docs/decision-log.md).
 - **Walking skeleton:** the API and worker wiring end to end with in-memory adapters.
 - **End-to-end tests:** the full Docker Compose stack with real tokens, including RabbitMQ and
   PostgreSQL outages.
+- **Chaos tests** (`pnpm test:chaos`, under ten minutes): hard failures against the same stack,
+  each ending in one terminal event and no attempt processed twice. A PostgreSQL outage long
+  enough to dead-letter documents, recovered by `xip redrive`; a lost message, recovered by the
+  sweeper alone; the worker killed mid-attempt; a poison message that stays in the DLQ; and
+  RabbitMQ killed while the relay publishes a burst of 20 documents.
 - **CI** (GitHub Actions): format, lint, types, architecture rules, audit, unit tests and build;
-  the contract tests against service containers; the e2e tests against the compose stack.
+  the contract tests against service containers; the e2e tests and, in parallel, the chaos tests
+  against the compose stack.
 - **Release:** multi-arch images (amd64 and arm64) to GHCR with an SBOM and provenance. A `v*.*.*`
   tag publishes semver tags; Dependabot proposes updates.
 - **Monitoring today:** structured JSON logs (pino); a correlation id per request that is echoed
