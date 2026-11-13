@@ -25,6 +25,14 @@ import {
   type MessagingHarness,
 } from '../contracts/message-publisher.contract';
 
+// Same source as the Postgres contract tests: the environment (CI) or apps/service/.env (local),
+// so a worktree with its own compose project never talks to another one's broker.
+try {
+  process.loadEnvFile('.env');
+} catch {
+  // No .env file: rely on the environment.
+}
+
 // Runs against the RabbitMQ from `pnpm infra:up`. Every suite declares its own topology under a
 // random prefix and deletes it afterwards, so runs never see each other's messages.
 const AMQP_URL = process.env['AMQP_URL'] ?? 'amqp://xip:xip@localhost:5672';
