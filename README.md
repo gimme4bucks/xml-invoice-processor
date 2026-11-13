@@ -7,6 +7,7 @@ asynchronously. Every document has a status: `Received`, `Processing`, `Complete
 - [Quick start](#quick-start)
 - [Check that it really ran](#check-that-it-really-ran)
 - [API](#api)
+- [Support view](#support-view)
 - [Architecture](#architecture)
 - [Reliability: what happens when something fails](#reliability-what-happens-when-something-fails)
 - [Key decisions and trade-offs](#key-decisions-and-trade-offs)
@@ -24,7 +25,7 @@ yourself needs buildx 0.17 or newer), Node 22 and pnpm 10 (through Corepack) for
 ```bash
 git clone https://github.com/gimme4bucks/xml-invoice-processor.git && cd xml-invoice-processor
 corepack enable && pnpm install
-docker compose --profile full up -d --build --wait   # Postgres, RabbitMQ, migrations, API, worker, mock IdP, HTTPS edge
+docker compose --profile full up -d --build --wait   # Postgres, RabbitMQ, migrations, API, worker, mock IdP, support app, HTTPS edge
 pnpm demo                                            # walks through every scenario against the running stack
 pnpm e2e                                             # the end-to-end tests, including RabbitMQ and Postgres outages
 docker compose --profile full down --volumes         # stop everything and remove the data (and the edge's CA)
@@ -32,7 +33,7 @@ docker compose --profile full down --volumes         # stop everything and remov
 
 The first build takes a few minutes: it downloads the Peppol rules (sha256-checked) and compiles
 them. To skip it, use the published release images instead: they are public on GHCR
-(`ghcr.io/gimme4bucks/xml-invoice-processor` and `-mock-idp`, linux/amd64 and linux/arm64).
+(`ghcr.io/gimme4bucks/xml-invoice-processor`, `-mock-idp` and `-web`, linux/amd64 and linux/arm64).
 
 ```bash
 docker compose --profile full pull           # the latest release; prefix both commands with TAG=1.0.0 to pin it
@@ -43,8 +44,8 @@ docker compose --profile full up -d --wait   # no --build: uses the pulled image
 [examples](examples/README.md) show the same flows with curl, the demo clients and what each
 example invoice does.
 
-The API and the mock IdP are only reachable over HTTPS, through a Caddy reverse proxy (the
-`edge`) with its own local CA ([ADR 0013](docs/adr/0013-tls-at-the-edge.md)). `pnpm demo` and
+The API, the mock IdP and the support app are only reachable over HTTPS, through a Caddy reverse
+proxy (the `edge`) with its own local CA ([ADR 0013](docs/adr/0013-tls-at-the-edge.md)). `pnpm demo` and
 `pnpm e2e` export its root certificate and trust it by themselves; nothing switches certificate
 verification off. For curl, `pnpm tls:ca` exports it to `.tls/edge-root-ca.crt`:
 
@@ -57,12 +58,14 @@ curl --cacert "$(pnpm -s tls:ca)" https://localhost:3443/health   # {"status":"o
 | API                    | https://localhost:3443                                                                 |
 | OpenAPI (Swagger UI)   | https://localhost:3443/docs, JSON at `/openapi.json` (the browser warns, see below)    |
 | Mock identity provider | https://localhost:4443 (`POST /token`, `/.well-known/jwks.json`)                       |
+| Support view (browser) | https://localhost:5443, user `support-agent` (see [Support view](#support-view))       |
 | Edge root certificate  | `pnpm tls:ca` (a new one after `down --volumes`)                                       |
 | RabbitMQ management    | http://127.0.0.1:15672 (user `xip`, password `xip`; a local tool, not behind the edge) |
 
 The demo clients and their secrets in `docker-compose.yml` are for local use only. A browser
-does not know the edge's CA, so Swagger UI shows a certificate warning unless you add
-`.tls/edge-root-ca.crt` to your system or browser as a trusted root.
+does not know the edge's CA, so Swagger UI shows a certificate warning, and the support view
+cannot reach the API, unless you trust `.tls/edge-root-ca.crt` in your system or browser
+([how](#trusting-the-local-ca-in-a-browser)).
 
 **Local development** (Node processes against Dockerised Postgres and RabbitMQ):
 
@@ -183,6 +186,72 @@ Content-Type: application/problem+json
 { "type": "urn:xip:problem:DUPLICATE_DOCUMENT", "title": "Duplicate document", "status": 409,
   "code": "DUPLICATE_DOCUMENT", "detail": "…", "existingDocumentId": "…", "correlationId": "…" }
 ```
+
+## Support view
+
+A small React app for support staff at **https://localhost:5443**
+([ADR 0018](docs/adr/0018-support-web-app.md)). A support employee signs in at the mock IdP with
+Authorization Code + PKCE, follows documents across organisations (filters for organisation,
+status and type, and "load more"), and opens one to see its status, the failure reason with every
+violated rule, and its history as a timeline. It is read-only and never shows the XML or the
+processing result ([ADR 0017](docs/adr/0017-support-access-with-pkce.md)).
+
+1. Start the full stack (see the [quick start](#quick-start)) and run `pnpm demo`, so that there
+   are documents of both demo organisations, a failed one among them.
+2. Trust the edge's root certificate in your browser (below).
+3. Open https://localhost:5443 and choose **Sign in**. The IdP's login form accepts the demo user
+   `support-agent` with the password `change-me` (from `docker-compose.yml`, for local use only).
+4. Back in the app, filter the list (status `Failed`, for example) and open a document.
+
+The session lives in the tab's memory only. A reload, a new tab or closing the tab means signing
+in again, and the token expires after 15 minutes; **Sign out** forgets it at once. Every lookup
+writes an audit line with your user name (`docker compose logs api | grep support-access`).
+
+The app reads the API URL, the issuer and the client id at runtime from `/config.js`. The `web`
+service writes that file from its environment (`API_URL`, `IDP_ISSUER`, `CLIENT_ID`), and the
+CSP's `connect-src` from the same values, so one image serves any environment. Its tests (Vitest
+with jsdom) run in `pnpm verify`.
+
+### Trusting the local CA in a browser
+
+The edge's certificates come from Caddy's local CA, which no browser knows. A browser lets you
+click through the warning for a page, but not for the app's calls to the API (`:3443`) and the IdP
+(`:4443`): those simply fail, and the app shows "Could not reach the API" (`NETWORK_ERROR`) or
+"Could not reach the identity provider". Trust the root certificate instead. Never switch
+certificate checks off.
+
+```bash
+pnpm tls:ca   # writes .tls/edge-root-ca.crt from the running stack
+```
+
+**macOS, for Safari and Chrome** (both use the macOS keychain):
+
+```bash
+security add-trusted-cert -r trustRoot -k ~/Library/Keychains/login.keychain-db .tls/edge-root-ca.crt
+```
+
+macOS asks for your password. In Keychain Access instead: drag the file into the _login_
+keychain, open _Caddy Local Authority - 2026 ECC Root_ and set _Trust_ → _When using this
+certificate_ to _Always Trust_. Restart the browser if it had the app open.
+
+**Firefox** has its own certificate store: _Settings_ → _Privacy & Security_ → _Certificates_ →
+_View Certificates…_ → _Authorities_ → _Import…_, choose `.tls/edge-root-ca.crt` and tick _Trust
+this CA to identify websites_.
+
+**Remove it again** when you are done. Trusting the root lets whoever holds its key, which sits in
+the stack's `edge-data` volume, issue certificates your browser accepts for any site. Every
+`docker compose --profile full down --volumes` creates a new CA; the old one stays trusted until
+you delete it.
+
+```bash
+# macOS (Safari and Chrome): every Caddy root in the login keychain, with its trust settings
+security find-certificate -a -Z -c "Caddy Local Authority" ~/Library/Keychains/login.keychain-db \
+  | awk '/^SHA-1 hash:/ { print $3 }' \
+  | xargs -n 1 -I {} security delete-certificate -t -Z {} ~/Library/Keychains/login.keychain-db
+```
+
+In Firefox: _View Certificates…_ → _Authorities_, select _Caddy Local Authority - 2026 ECC Root_
+and choose _Delete or Distrust…_.
 
 ## Architecture
 
