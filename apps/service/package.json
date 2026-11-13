@@ -9,6 +9,7 @@
     "test": "vitest run --project unit",
     "test:contract": "vitest run --project contract",
     "test:e2e": "vitest run --project e2e",
+    "test:chaos": "vitest run --project chaos",
     "start:api": "node --enable-source-maps dist/main-api.js",
     "start:worker": "node --enable-source-maps dist/main-worker.js",
     "dev:api": "node --watch-path=dist --enable-source-maps dist/main-api.js",

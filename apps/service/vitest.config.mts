@@ -33,6 +33,17 @@ export default defineConfig({
           fileParallelism: false,
         },
       },
+      {
+        // Hard infrastructure failures against the full compose stack (G10); not part of e2e.
+        extends: true,
+        test: {
+          name: 'chaos',
+          include: ['test/chaos/**/*.chaos.spec.ts'],
+          testTimeout: 360_000,
+          hookTimeout: 120_000,
+          fileParallelism: false,
+        },
+      },
     ],
   },
 });
