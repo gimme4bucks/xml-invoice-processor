@@ -17,13 +17,30 @@ import {
   type Topology,
   topologyFor,
 } from '../../src/documents/adapters/outbound/rabbitmq/topology';
+import {
+  DeadLetterSource,
+  DlqRedrive,
+} from '../../src/documents/adapters/inbound/messaging/dlq-redrive';
+import { RabbitMqDeadLetterSource } from '../../src/documents/adapters/inbound/messaging/rabbitmq-dead-letter-source';
 import { ProcessDocumentCommand } from '../../src/documents/application/commands/process-document';
+import {
+  RequeueDocumentCommand,
+  type RequeueResult,
+} from '../../src/documents/application/commands/requeue-document';
 import { MessagePublisher, PublishFailedError } from '../../src/documents/application/ports';
 import {
   type DeliveredMessageView,
   describeMessagePublisherContract,
   type MessagingHarness,
 } from '../contracts/message-publisher.contract';
+
+// Same source as the Postgres contract tests: the environment (CI) or apps/service/.env (local),
+// so a worktree with its own compose project never talks to another one's broker.
+try {
+  process.loadEnvFile('.env');
+} catch {
+  // No .env file: rely on the environment.
+}
 
 // Runs against the RabbitMQ from `pnpm infra:up`. Every suite declares its own topology under a
 // random prefix and deletes it afterwards, so runs never see each other's messages.
@@ -293,5 +310,131 @@ describe('rabbitmq: document consumer', () => {
     const reason = await eventually(async () => fatal[0]);
     expect(reason).toMatch(/PRECONDITION_FAILED/);
     expect(fatal).toHaveLength(1);
+  });
+});
+
+/** Stands in for RequeueDocumentHandler: records the commands, fails for `failFor`. */
+class RequeueRecorder {
+  readonly documentIds: string[] = [];
+  failFor = new Set<string>();
+}
+
+@CommandHandler(RequeueDocumentCommand)
+class RecordingRequeueHandler implements ICommandHandler<RequeueDocumentCommand> {
+  constructor(private readonly recorder: RequeueRecorder) {}
+
+  async execute({ input }: RequeueDocumentCommand): Promise<RequeueResult> {
+    this.recorder.documentIds.push(input.documentId);
+    if (this.recorder.failFor.has(input.documentId)) throw new Error('database down');
+    return { outcome: 'requeued', status: 'Processing', attempt: 2 };
+  }
+}
+
+describe('rabbitmq: dead-letter source (xip redrive)', () => {
+  let config: RabbitMqConfig;
+  let fatal: string[];
+  let connection: AmqpConnection;
+  let source: RabbitMqDeadLetterSource;
+  let inspector: { channel: Channel; connection: ChannelModel };
+
+  beforeAll(async () => {
+    inspector = await openInspector();
+  });
+
+  afterAll(async () => {
+    await inspector.connection.close();
+  });
+
+  beforeEach(async () => {
+    config = testConfig();
+    fatal = [];
+    connection = new AmqpConnection(config, (reason) => fatal.push(reason));
+    source = new RabbitMqDeadLetterSource(connection);
+    expect(await source.count()).toBe(0); // connected, topology declared
+  });
+
+  afterEach(async () => {
+    await source.onModuleDestroy();
+    await connection.onApplicationShutdown();
+    await deleteTopology(topologyFor(config));
+    expect(fatal).toEqual([]);
+  });
+
+  /** Puts a message straight into the DLQ, as the delivery limit would. */
+  const deadLetter = (body: unknown, messageId = randomUUID()): string => {
+    const content = typeof body === 'string' ? body : JSON.stringify(body);
+    inspector.channel.sendToQueue(connection.topology.deadLetterQueue, Buffer.from(content), {
+      messageId,
+      persistent: true,
+    });
+    return messageId;
+  };
+  const dlqHolds = (count: number) =>
+    eventually(async () => ((await source.count()) === count ? true : undefined));
+
+  it('hands out each message once with its parsed body; ack removes it, release keeps it', async () => {
+    const valid = deadLetter({ documentId: 'd-1', attempt: 1 });
+    const garbage = deadLetter('not json');
+    await dlqHolds(2);
+
+    const first = await source.next();
+    const second = await source.next();
+    expect(first).toMatchObject({ messageId: valid, payload: { documentId: 'd-1', attempt: 1 } });
+    expect(second).toMatchObject({ messageId: garbage, payload: undefined });
+    expect(await source.next()).toBeUndefined(); // both taken, neither handed out again
+
+    first!.ack();
+    second!.release();
+    await dlqHolds(1);
+    expect((await source.next())?.messageId).toBe(garbage);
+  });
+
+  it('a released message stays, however often: release does not count toward the delivery limit', async () => {
+    // The DLQ has no explicit limit, so RabbitMQ 4.4 applies the quorum default of 20 and drops
+    // the message after that many returns: with basic.reject, or by closing the channel.
+    const messageId = deadLetter({ documentId: 'd-1', attempt: 1 });
+    await dlqHolds(1);
+
+    for (let run = 0; run < 25; run++) {
+      const letter = await eventually(() => source.next());
+      expect(letter.messageId).toBe(messageId);
+      letter.release();
+    }
+
+    await dlqHolds(1);
+  });
+
+  it('xip redrive acks only what was requeued and leaves malformed and failing messages', async () => {
+    const recorder = new RequeueRecorder();
+    recorder.failFor.add('d-fail');
+    const app = await Test.createTestingModule({
+      imports: [CqrsModule.forRoot()],
+      providers: [
+        DlqRedrive,
+        RecordingRequeueHandler,
+        { provide: RequeueRecorder, useValue: recorder },
+        { provide: DeadLetterSource, useValue: source },
+      ],
+    })
+      .compile()
+      .then((module) => module.init());
+    try {
+      deadLetter({ documentId: 'd-ok', attempt: 1 });
+      deadLetter({ documentId: 'd-fail', attempt: 1 });
+      const malformed = deadLetter('{"attempt":1}');
+      await dlqHolds(3);
+
+      const report = await app.get(DlqRedrive).run({ dryRun: false });
+
+      expect(report).toMatchObject({
+        requeued: [{ documentId: 'd-ok' }],
+        failed: ['d-fail'],
+        malformed: [malformed],
+      });
+      expect(recorder.documentIds).toEqual(['d-ok', 'd-fail']);
+      await dlqHolds(2);
+    } finally {
+      await app.close();
+    }
   });
 });

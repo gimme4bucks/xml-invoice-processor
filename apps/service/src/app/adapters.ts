@@ -31,12 +31,23 @@ import {
   StubStructureValidator,
 } from '../documents/adapters/outbound/in-memory/stub-validation';
 import { postgresProviders } from '../documents/adapters/outbound/postgres/postgres-providers';
+import { AmqpConnection } from '../documents/adapters/outbound/rabbitmq/amqp-connection';
 import { loadRabbitMqConfig } from '../documents/adapters/outbound/rabbitmq/rabbitmq-config';
 import { rabbitMqProviders } from '../documents/adapters/outbound/rabbitmq/rabbitmq-providers';
 import { RandomIdGenerator, SystemClock } from '../documents/adapters/outbound/system/system';
-import { validationProviders } from '../documents/adapters/outbound/validation/validation-providers';
+import {
+  schematronTimeoutMs,
+  validationProviders,
+} from '../documents/adapters/outbound/validation/validation-providers';
 import { InMemoryDocumentConsumer } from '../documents/adapters/inbound/messaging/in-memory-consumer';
+import { DeadLetterSource } from '../documents/adapters/inbound/messaging/dlq-redrive';
+import { ProcessMessageDispatcher } from '../documents/adapters/inbound/messaging/process-message-dispatcher';
+import { RabbitMqDeadLetterSource } from '../documents/adapters/inbound/messaging/rabbitmq-dead-letter-source';
 import { messagingConsumers } from '../documents/adapters/inbound/messaging/rabbitmq-document-consumer';
+import {
+  loadSweeperSettings,
+  type SweeperSettings,
+} from '../documents/adapters/inbound/scheduling/sweeper-settings';
 import type { AppConfig } from '../shared/config';
 
 /**
@@ -117,5 +128,48 @@ export function adapterProviders(config: AppConfig, role: ProcessRole): Provider
 
 /** The worker's inbound adapter: what feeds messages to ProcessDocument. */
 export function consumerProviders(config: AppConfig): Provider[] {
-  return config.ADAPTERS === 'in-memory' ? [InMemoryDocumentConsumer] : messagingConsumers;
+  return config.ADAPTERS === 'in-memory'
+    ? [InMemoryDocumentConsumer, ProcessMessageDispatcher]
+    : messagingConsumers;
+}
+
+/**
+ * The worker's sweeper settings (SWEEPER_*). With the real adapters, a document may legitimately
+ * stay unchanged for the longest retry delay plus the Schematron timeout, so the threshold must be
+ * longer; a lower one is a startup error.
+ */
+export function sweeperSettings(
+  config: AppConfig,
+  env: NodeJS.ProcessEnv = process.env,
+): SweeperSettings {
+  if (config.ADAPTERS === 'in-memory') return loadSweeperSettings(env);
+  const longestRetryDelayMs = Math.max(...loadRabbitMqConfig(env).retryDelaysMs);
+  return loadSweeperSettings(env, longestRetryDelayMs + schematronTimeoutMs(env));
+}
+
+/**
+ * `xip redrive`, a one-shot process next to the workers: Postgres for the requeue's unit of work
+ * and RabbitMQ for the dead-letter queue. It never publishes; the workers' relay does.
+ */
+export function redriveProviders(
+  config: AppConfig,
+  env: NodeJS.ProcessEnv = process.env,
+): Provider[] {
+  if (config.ADAPTERS !== 'real') {
+    throw new Error('xip redrive needs ADAPTERS=real: the dead-letter queue is in RabbitMQ');
+  }
+  if (!config.DATABASE_URL) throw new Error('DATABASE_URL is required for xip redrive');
+  if (!config.AMQP_URL) throw new Error('AMQP_URL is required for xip redrive');
+  const rabbitMq = loadRabbitMqConfig(env);
+  return [
+    ...postgresProviders(config.DATABASE_URL),
+    { provide: AmqpConnection, useFactory: () => new AmqpConnection(rabbitMq) },
+    {
+      provide: DeadLetterSource,
+      useFactory: (connection: AmqpConnection) => new RabbitMqDeadLetterSource(connection),
+      inject: [AmqpConnection],
+    },
+    { provide: Clock, useClass: SystemClock },
+    { provide: IdGenerator, useClass: RandomIdGenerator },
+  ];
 }
