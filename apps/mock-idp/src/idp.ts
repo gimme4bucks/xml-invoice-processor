@@ -297,7 +297,9 @@ export async function createIdp(options: IdpOptions): Promise<Server> {
     if (!login) return htmlPage(res, 200, loginPage(request), request.redirectUri);
 
     const username = params.get('username') ?? '';
-    const user = support?.users[username];
+    // Own properties only: "constructor" or "__proto__" is not a user.
+    const user =
+      support && Object.hasOwn(support.users, username) ? support.users[username] : undefined;
     if (!user || !sameSecret(params.get('password') ?? '', user.password)) {
       const page = loginPage(request, 'Invalid username or password.');
       return htmlPage(res, 401, page, request.redirectUri);
