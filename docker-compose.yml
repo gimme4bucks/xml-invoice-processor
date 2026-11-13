@@ -35,6 +35,12 @@ x-service-env: &service-env
   VIES_UNAVAILABLE_TIMES_PER_NUMBER: ${VIES_UNAVAILABLE_TIMES_PER_NUMBER:-2}
   VIES_UNAVAILABLE_RATE: ${VIES_UNAVAILABLE_RATE:-0}
   VIES_INVALID_VAT_NUMBERS: ${VIES_INVALID_VAT_NUMBERS:-NL999999999B99}
+  # Stuck-document sweeper (ADR 0014), tuned for the demo: every 10 s, stuck after 90 s. A healthy
+  # document here stays unchanged for at most ~65 s (5 s retry + 30 s Schematron + 30 s requeue
+  # back-off), and the e2e outages are shorter, so the e2e tests never see a requeue. The
+  # production defaults are every minute and 15 minutes.
+  SWEEPER_INTERVAL_MS: ${SWEEPER_INTERVAL_MS:-10000}
+  SWEEPER_STUCK_AFTER_MS: ${SWEEPER_STUCK_AFTER_MS:-90000}
   # The issuer is only compared as a string: clients on the host fetch tokens from
   # localhost:4000, while the API fetches the keys inside the compose network.
   AUTH_ISSUER: ${AUTH_ISSUER:-http://localhost:4000}
