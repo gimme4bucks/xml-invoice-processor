@@ -77,15 +77,24 @@ export class ApiModule {
  * Worker process: consumes messages, processes documents and runs the outbox relay. `consumers`
  * is the inbound messaging adapter: the in-memory broker's (walking skeleton) or RabbitMQ's.
  */
+export interface WorkerOptions {
+  logging?: LoggingOptions;
+}
+
 @Module({})
 export class WorkerModule {
   static register(
     adapters: Provider[],
     consumers: Provider[] = [InMemoryDocumentConsumer],
+    options: WorkerOptions = {},
   ): DynamicModule {
     return {
       module: WorkerModule,
-      imports: [CqrsModule.forRoot(), AdaptersModule.register(adapters)],
+      imports: [
+        CqrsModule.forRoot(),
+        AdaptersModule.register(adapters),
+        LoggerModule.forRoot(loggerParams(options.logging ?? { level: 'info' })),
+      ],
       providers: [ProcessDocumentHandler, OutboxRelay, RelayLoop, ...consumers],
     };
   }
