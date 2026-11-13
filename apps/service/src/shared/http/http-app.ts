@@ -3,6 +3,7 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
 import { Logger } from 'nestjs-pino';
 import { setupOpenApi } from './openapi';
+import { SUPPORT_PATH, supportCors } from './support-cors';
 
 /**
  * No global body parser: the only body we accept (XML on POST /documents) is read by its
@@ -24,6 +25,11 @@ export interface HttpAppOptions {
    * force every http://localhost port to HTTPS for a year.
    */
   hstsMaxAgeSeconds?: number;
+  /**
+   * Browser origins of the support app (CORS_ORIGINS, exact matches). Empty, the default, keeps
+   * CORS off; set, it opens only the read-only support endpoints (ADR 0017).
+   */
+  corsOrigins?: readonly string[];
 }
 
 /** Everything the API needs on top of ApiModule; shared by main-api.ts and the HTTP tests. */
@@ -43,6 +49,8 @@ export function configureHttpApp(app: INestApplication, options: HttpAppOptions 
       },
     }),
   );
-  // CORS stays off (no enableCors): our clients are servers, not browsers.
+  // No enableCors: the organisations' clients are servers, not browsers. Only the support app
+  // runs in a browser, so only its endpoints get CORS, and only for the listed origins.
+  if (options.corsOrigins?.length) app.use(SUPPORT_PATH, supportCors(options.corsOrigins));
   setupOpenApi(app);
 }
