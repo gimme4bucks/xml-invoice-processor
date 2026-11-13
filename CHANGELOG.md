@@ -4,6 +4,28 @@ All notable changes to this project. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **HTTPS at the edge** ([ADR 0013](docs/adr/0013-tls-at-the-edge.md)):
+  - A Caddy reverse proxy terminates TLS for the API (`https://localhost:3443`) and the mock IdP (`https://localhost:4443`), with a local CA.
+  - `pnpm tls:ca` exports the CA, and the demo and e2e tests trust it explicitly.
+  - Plain HTTP is refused, not redirected.
+  - The API trusts exactly one proxy hop (`TRUST_PROXY`).
+  - The HSTS max-age is configurable (`HSTS_MAX_AGE_SECONDS`).
+- **Recovering stuck documents** ([ADR 0014](docs/adr/0014-recovering-stuck-documents.md)):
+  - `xip redrive [--dry-run] [--limit N]` requeues dead-lettered documents through the outbox.
+  - A sweeper in every worker requeues documents that stay unchanged too long.
+  - Both record `ProcessingRequeued` in the document's history.
+- **Worker logs:** one JSON line per handled message, with IDs, attempt, outcome, duration and correlation id.
+- **Test-driven development** (red, green, refactor) is a hard rule for every work package (`CLAUDE.md`).
+
+### Changed
+
+- **Ports:** the full compose stack publishes only the edge's HTTPS ports. The API and the mock IdP no longer listen on host ports 3000 and 4000.
+- **Dependencies:** NestJS 12.4.2, Vite 8.3.7, jose 6.2.17 and typescript-eslint 8.72.2.
+
 ## [1.0.0] - 2026-11-12
 
 The first release: a working backend that receives Peppol BIS Billing 3.0 invoices over HTTP,

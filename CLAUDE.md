@@ -61,7 +61,8 @@ apps/mock-idp/                 OAuth2 client-credentials issuer for dev/demo/e2e
 5. **RabbitMQ:**
    - Publish with confirms, `mandatory: true` and a timeout. A rejected publish means _unknown_, not _not delivered_.
    - Ack only after the handler's transaction has committed, and ack on the delivery's own channel.
-   - Requeue with `reject(msg, true)`, never `nack`: on RabbitMQ 4.4, `nack` does not count towards `x-delivery-limit`.
+   - On the work queues, requeue with `reject(msg, true)`, never `nack`: on RabbitMQ 4.4, `nack` does not count towards `x-delivery-limit`.
+   - The one exception is the DLQ: `xip redrive` releases messages with `nack` for the same reason in reverse. The DLQ has a default limit of 20 and no dead-letter target, so a message released with `reject` would eventually be dropped silently (ADR 0014).
    - Fail fast (exit) on an unexpected channel close or consumer cancel.
 6. **Security:**
    - Organisation scoping only from token claims, never from the URL or body.
@@ -92,6 +93,7 @@ pnpm test                            # unit project: domain, handlers, in-memory
 pnpm test:contract                   # contract project: real adapters (needs infra + migrations)
 pnpm verify                          # what CI's verify job runs: format, lint, types, depcruise, unit, build
 pnpm tls:ca                          # export the HTTPS edge's root certificate (full stack) to .tls/, for curl --cacert
+pnpm redrive [--dry-run] [--limit N] # requeue dead-lettered documents through the outbox (ADR 0014; `xip redrive` in the image)
 pnpm -F @xip/service build           # SWC build to dist/ (the Nest CLI does not run on Node 22.14)
 ADAPTERS=in-memory pnpm -F @xip/service start:api   # walking skeleton API on :3000
 ```
