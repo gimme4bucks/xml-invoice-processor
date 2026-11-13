@@ -58,11 +58,27 @@ describe('LibxmlStructureValidator', () => {
     expect(validator.validate(xml)).toMatchObject({ valid: false, reason: 'doctype-forbidden' });
   });
 
-  it('rejects a UBL CreditNote as not supported yet', () => {
-    expect(validator.validate(peppolFixture('credit-note'))).toMatchObject({
-      valid: false,
-      reason: 'unsupported-document-type',
-    });
+  it.each(['credit-note', 'credit-note-bad-type-code'] as const)(
+    'accepts %s as a UBL 2.1 CreditNote',
+    (fixture) => {
+      expect(validator.validate(peppolFixture(fixture))).toEqual({
+        valid: true,
+        documentType: 'CreditNote',
+      });
+    },
+  );
+
+  it('validates a credit note against the CreditNote XSD, not the Invoice one', () => {
+    // InvoiceLine and InvoicedQuantity belong to an Invoice; a credit note has its own.
+    const xml = peppolFixture('credit-note')
+      .toString('utf8')
+      .replaceAll('cac:CreditNoteLine>', 'cac:InvoiceLine>')
+      .replaceAll('cbc:CreditedQuantity', 'cbc:InvoicedQuantity');
+
+    const result = validator.validate(Buffer.from(xml));
+
+    expect(result).toMatchObject({ valid: false, reason: 'schema-invalid' });
+    if (!result.valid) expect(result.errors[0]?.message).toMatch(/InvoiceLine': This element/);
   });
 
   it.each([
