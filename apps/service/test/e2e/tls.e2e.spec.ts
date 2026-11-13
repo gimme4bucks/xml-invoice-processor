@@ -55,6 +55,8 @@ function get(url: string, options: https.RequestOptions = {}): Promise<RawRespon
 
 const plainHttp = (url: string) => url.replace(/^https:/, 'http:');
 
+const repoRoot = path.resolve(__dirname, '../../../..');
+
 describe('TLS at the edge (e2e)', () => {
   it.each(endpoints)(
     'serves $name over HTTPS with a certificate from the exported CA',
@@ -96,7 +98,7 @@ describe('TLS at the edge (e2e)', () => {
     const { stdout } = await promisify(execFile)(
       'docker',
       ['compose', '--profile', 'full', 'config', '--format', 'json'],
-      { cwd: path.resolve(__dirname, '../../../..') },
+      { cwd: repoRoot },
     );
     const services = (
       JSON.parse(stdout) as {
@@ -111,6 +113,16 @@ describe('TLS at the edge (e2e)', () => {
     expect(published('edge').sort()).toEqual(['3443->3443', '4443->4443']);
   });
 
+  it('runs the edge as a non-root user', async () => {
+    const { stdout } = await promisify(execFile)(
+      'docker',
+      ['compose', '--profile', 'full', 'exec', '-T', 'edge', 'id', '-u'],
+      { cwd: repoRoot },
+    );
+
+    expect(stdout.trim()).not.toBe('0');
+  });
+
   describe('Strict-Transport-Security', () => {
     let supplier: Api;
 
@@ -118,10 +130,10 @@ describe('TLS at the edge (e2e)', () => {
       supplier = await Api.as(clients.supplier);
     });
 
-    it('is sent on /health', async () => {
+    it('is sent on /health, with the short max-age of the stack', async () => {
       const response = await get(`${stack.apiUrl}/health`);
 
-      expect(response.headers['strict-transport-security']).toMatch(/max-age=[1-9]\d*/);
+      expect(response.headers['strict-transport-security']).toBe(stack.hsts);
     });
 
     it('is sent on API responses, with and without a token', async () => {
@@ -129,9 +141,9 @@ describe('TLS at the edge (e2e)', () => {
       const anonymous = await get(`${stack.apiUrl}/documents`);
 
       expect(authenticated.status).toBe(200);
-      expect(authenticated.headers.get('strict-transport-security')).toMatch(/max-age=[1-9]\d*/);
+      expect(authenticated.headers.get('strict-transport-security')).toBe(stack.hsts);
       expect(anonymous.status).toBe(401);
-      expect(anonymous.headers['strict-transport-security']).toMatch(/max-age=[1-9]\d*/);
+      expect(anonymous.headers['strict-transport-security']).toBe(stack.hsts);
     });
   });
 });

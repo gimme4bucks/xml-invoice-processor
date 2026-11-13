@@ -28,6 +28,8 @@ export const stack = {
   invalidVatNumber: (process.env.VIES_INVALID_VAT_NUMBERS ?? 'NL999999999B99').split(',')[0]!,
   /** TTLs of the retry delay queues in the stack. */
   retryDelaysMs: (process.env.RETRY_DELAYS_MS ?? '1000,2000,5000').split(',').map(Number),
+  /** The stack's short HSTS policy: a local stack must not pin a browser to HTTPS for a year. */
+  hsts: `max-age=${process.env.HSTS_MAX_AGE_SECONDS ?? 300}; includeSubDomains`,
 };
 
 /** The two demo clients of the compose stack: supplier and customer of the fixture invoices. */

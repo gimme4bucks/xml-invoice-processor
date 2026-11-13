@@ -22,22 +22,30 @@ class ClientController {
 })
 class ClientModule {}
 
+let app: INestApplication | undefined;
+
+afterEach(async () => {
+  await app?.close();
+  app = undefined;
+});
+
+/** GET /client on an app set up by configureHttpApp, with the given request headers. */
+async function getClient(options: HttpAppOptions, headers: Record<string, string> = {}) {
+  const moduleRef = await Test.createTestingModule({ imports: [ClientModule] }).compile();
+  app = moduleRef.createNestApplication(httpAppOptions);
+  configureHttpApp(app, options);
+  await app.init();
+  return request(app.getHttpServer() as Server)
+    .get('/client')
+    .set(headers);
+}
+
 describe('configureHttpApp: the proxy in front of the API', () => {
-  let app: INestApplication | undefined;
-
-  afterEach(async () => {
-    await app?.close();
-  });
-
   async function client(options: HttpAppOptions, forwardedFor: string) {
-    const moduleRef = await Test.createTestingModule({ imports: [ClientModule] }).compile();
-    app = moduleRef.createNestApplication(httpAppOptions);
-    configureHttpApp(app, options);
-    await app.init();
-    const response = await request(app.getHttpServer() as Server)
-      .get('/client')
-      .set('X-Forwarded-For', forwardedFor)
-      .set('X-Forwarded-Proto', 'https');
+    const response = await getClient(options, {
+      'X-Forwarded-For': forwardedFor,
+      'X-Forwarded-Proto': 'https',
+    });
     return response.body as { ip: string; protocol: string };
   }
 
@@ -54,5 +62,21 @@ describe('configureHttpApp: the proxy in front of the API', () => {
 
     expect(seen.ip).toBe('198.51.100.7');
     expect(seen.protocol).toBe('https');
+  });
+});
+
+describe('configureHttpApp: Strict-Transport-Security', () => {
+  it('keeps browsers on HTTPS for a year by default', async () => {
+    const response = await getClient({});
+
+    expect(response.headers['strict-transport-security']).toBe(
+      'max-age=31536000; includeSubDomains',
+    );
+  });
+
+  it('uses a shorter max-age when configured, so a local stack does not pin a browser', async () => {
+    const response = await getClient({ hstsMaxAgeSeconds: 300 });
+
+    expect(response.headers['strict-transport-security']).toBe('max-age=300; includeSubDomains');
   });
 });
