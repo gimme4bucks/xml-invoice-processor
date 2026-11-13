@@ -6,7 +6,7 @@
  * certificate and trusts it (scripts/tls/edge-ca.sh); verification is never switched off. The outage scenarios (RabbitMQ or Postgres down) are in `pnpm e2e`,
  * because they stop containers.
  *
- * Every run submits fresh invoices (new invoice number, new customer VAT number), because the API
+ * Every run submits fresh documents (new invoice number, new customer VAT number), because the API
  * refuses a byte-identical file from the same organisation and the stack keeps its data.
  */
 import { randomInt, randomUUID } from 'node:crypto';
@@ -28,6 +28,7 @@ interface Reply {
 }
 interface Doc {
   documentId: string;
+  documentType: string;
   status: string;
   direction: string;
   attempts: number;
@@ -132,7 +133,7 @@ let sequence = 0;
 
 function example(name: string, options: { customerVat?: string } = {}): Buffer {
   let xml = readFileSync(new URL(`../../examples/invoices/${name}.xml`, import.meta.url), 'utf8');
-  // The first cbc:ID of a UBL invoice is its number (BT-1).
+  // The first cbc:ID of a UBL invoice or credit note is its number (BT-1).
   xml = xml.replace(/<cbc:ID>[^<]*<\/cbc:ID>/, `<cbc:ID>${run}-${++sequence}</cbc:ID>`);
   if (options.customerVat) xml = xml.replace('NL009876543B01', options.customerVat);
   return Buffer.from(xml, 'utf8');
@@ -194,7 +195,36 @@ check(
   `org-customer sees direction ${String(purchase.direction)}`,
 );
 
-step('4. A Peppol rule violation (wrong totals): accepted, then Failed in the worker');
+step('4. A credit note (UBL CreditNote, type code 381): the same pipeline, to Completed');
+say(
+  'It credits an earlier invoice. Its amounts are positive: the document type says that it credits.',
+);
+const credit = await submit(supplier, example('credit-note'));
+const creditDoc = await follow(supplier, String(credit.body.documentId));
+check(
+  credit.status === 202 &&
+    creditDoc.documentType === 'CreditNote' &&
+    creditDoc.status === 'Completed',
+  `POST -> ${credit.status}; documentType ${creditDoc.documentType}, ${creditDoc.status}`,
+);
+const creditResult = (await call('GET', `/documents/${creditDoc.documentId}/result`, supplier))
+  .body as {
+  result?: {
+    creditNote?: {
+      creditNoteNumber: string;
+      typeCode: string;
+      precedingInvoices: { invoiceNumber: string }[];
+      totals: { payableAmount: string };
+    };
+  };
+};
+const credited = creditResult.result?.creditNote;
+check(
+  credited?.typeCode === '381' && credited.precedingInvoices.length > 0,
+  `GET /documents/{id}/result: creditNote ${credited?.creditNoteNumber}, type code ${credited?.typeCode}, credits ${credited?.precedingInvoices.map((p) => p.invoiceNumber).join(', ')}`,
+);
+
+step('5. A Peppol rule violation (wrong totals): accepted, then Failed in the worker');
 const bad = await submit(supplier, example('bad-totals'));
 check(
   bad.status === 202,
@@ -204,7 +234,7 @@ const badDoc = await follow(supplier, String(bad.body.documentId));
 const rules = [...new Set(badDoc.failure?.violations?.map((v) => v.ruleId))].join(', ');
 check(badDoc.status === 'Failed' && rules.includes('BR-CO-'), `${badDoc.failure?.code}: ${rules}`);
 
-step('5. A VAT number that does not exist according to VIES: Failed for good, no retry');
+step('6. A VAT number that does not exist according to VIES: Failed for good, no retry');
 const invalid = await submit(supplier, example('valid-sales', { customerVat: INVALID_VAT_NUMBER }));
 const invalidDoc = await follow(supplier, String(invalid.body.documentId));
 check(
@@ -212,10 +242,9 @@ check(
   `${invalidDoc.status}: ${invalidDoc.failure?.message}`,
 );
 
-step('6. Rejected at intake (synchronous structure checks, 422 Problem Details)');
+step('7. Rejected at intake (synchronous structure checks, 422 Problem Details)');
 for (const [name, reason] of [
   ['missing-issue-date', 'schema-invalid'],
-  ['credit-note', 'unsupported-document-type'],
   ['doctype-xxe', 'doctype-forbidden'],
 ] as const) {
   const rejected = await submit(supplier, example(name));
@@ -225,7 +254,7 @@ for (const [name, reason] of [
   );
 }
 
-step('7. Idempotency (Idempotency-Key per organisation plus a SHA-256 of the content)');
+step('8. Idempotency (Idempotency-Key per organisation plus a SHA-256 of the content)');
 const replay = await submit(supplier, salesXml, salesKey);
 check(
   replay.status === 202 && replay.body.documentId === salesId,
@@ -242,7 +271,7 @@ check(
   `same file, new key -> ${duplicate.status} ${String(duplicate.body.code)}`,
 );
 
-step('8. Authentication and organisation scoping');
+step('9. Authentication and organisation scoping');
 const anonymous = await call('GET', '/documents', undefined);
 check(anonymous.status === 401, `no token -> ${anonymous.status} ${String(anonymous.body.code)}`);
 const readOnly = await submit(

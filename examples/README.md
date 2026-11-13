@@ -34,28 +34,35 @@ The compose defaults are tuned so that the interesting paths show up in a few se
 
 Two demo clients exist in the mock IdP, both with the secret `change-me`:
 
-| Client            | `org_id`       | `peppol_id`     | On the example invoices                                         |
-| ----------------- | -------------- | --------------- | --------------------------------------------------------------- |
-| `supplier-client` | `org-supplier` | `0106:11111111` | supplier of `valid-sales.xml`, customer of `valid-purchase.xml` |
-| `customer-client` | `org-customer` | `0106:22222222` | customer of `valid-sales.xml`                                   |
+| Client            | `org_id`       | `peppol_id`     | On the example invoices                                                              |
+| ----------------- | -------------- | --------------- | ------------------------------------------------------------------------------------ |
+| `supplier-client` | `org-supplier` | `0106:11111111` | supplier of `valid-sales.xml` and the credit notes, customer of `valid-purchase.xml` |
+| `customer-client` | `org-customer` | `0106:22222222` | customer of `valid-sales.xml` and the credit notes                                   |
 
-## Example invoices
+## Example invoices and credit notes
 
 All written for this project (Peppol BIS Billing 3.0, UBL 2.1). Outcomes when `supplier-client`
 submits them:
 
-| File                              | Outcome                                                                         |
-| --------------------------------- | ------------------------------------------------------------------------------- |
-| `invoices/valid-sales.xml`        | 202, then `Completed` (direction `sales`)                                       |
-| `invoices/valid-purchase.xml`     | 202, then `Completed` (direction `purchase`)                                    |
-| `invoices/bad-totals.xml`         | 202, then `Failed`: `BUSINESS_RULES_VIOLATED` with BR-CO-10, BR-CO-13, BR-CO-16 |
-| `invoices/missing-issue-date.xml` | 422 `DOCUMENT_REJECTED`, reason `schema-invalid` (UBL 2.1 XSD)                  |
-| `invoices/credit-note.xml`        | 422 `DOCUMENT_REJECTED`, reason `unsupported-document-type`                     |
-| `invoices/doctype-xxe.xml`        | 422 `DOCUMENT_REJECTED`, reason `doctype-forbidden` (never resolved)            |
+| File                                     | Outcome                                                                           |
+| ---------------------------------------- | --------------------------------------------------------------------------------- |
+| `invoices/valid-sales.xml`               | 202, then `Completed` (direction `sales`)                                         |
+| `invoices/valid-purchase.xml`            | 202, then `Completed` (direction `purchase`)                                      |
+| `invoices/bad-totals.xml`                | 202, then `Failed`: `BUSINESS_RULES_VIOLATED` with BR-CO-10, BR-CO-13, BR-CO-16   |
+| `invoices/missing-issue-date.xml`        | 422 `DOCUMENT_REJECTED`, reason `schema-invalid` (UBL 2.1 XSD)                    |
+| `invoices/credit-note.xml`               | 202, then `Completed` (`documentType` `CreditNote`, direction `sales`)            |
+| `invoices/credit-note-bad-type-code.xml` | 202, then `Failed`: `BUSINESS_RULES_VIOLATED` with BR-CL-01, PEPPOL-EN16931-P0101 |
+| `invoices/doctype-xxe.xml`               | 422 `DOCUMENT_REJECTED`, reason `doctype-forbidden` (never resolved)              |
+
+`credit-note.xml` credits one returned workbook of invoice INV-2026-0101 (type code 381). Its
+amounts are positive: the document type says that it credits. Its result
+(`GET /documents/{id}/result`) is under `creditNote` instead of `invoice`, with the credit note
+number, the type code and the invoice it credits (`precedingInvoices`).
+`credit-note-bad-type-code.xml` uses the commercial invoice code 380 instead.
 
 A file can be accepted once per organisation: sending the same bytes again under a new
-`Idempotency-Key` is a 409 `DUPLICATE_DOCUMENT`. Change the invoice number (the first `cbc:ID`)
-to submit it again. `pnpm demo` does that for you on every run.
+`Idempotency-Key` is a 409 `DUPLICATE_DOCUMENT`. Change the document number (the first
+`cbc:ID`) to submit it again. `pnpm demo` does that for you on every run.
 
 ## By hand with curl
 
@@ -80,6 +87,7 @@ curl -s --cacert "$CA" https://localhost:3443/documents/$ID -H "Authorization: B
 curl -s --cacert "$CA" https://localhost:3443/documents/$ID/history -H "Authorization: Bearer $TOKEN" | jq  # events
 curl -s --cacert "$CA" https://localhost:3443/documents/$ID/result -H "Authorization: Bearer $TOKEN" | jq   # result
 curl -s --cacert "$CA" 'https://localhost:3443/documents?status=Failed' -H "Authorization: Bearer $TOKEN" | jq
+curl -s --cacert "$CA" 'https://localhost:3443/documents?type=CreditNote' -H "Authorization: Bearer $TOKEN" | jq
 ```
 
 Errors are RFC 9457 Problem Details (`application/problem+json`) with a stable `code`; the
