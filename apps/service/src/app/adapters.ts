@@ -38,6 +38,7 @@ import { validationProviders } from '../documents/adapters/outbound/validation/v
 import { InMemoryDocumentConsumer } from '../documents/adapters/inbound/messaging/in-memory-consumer';
 import { ProcessMessageDispatcher } from '../documents/adapters/inbound/messaging/process-message-dispatcher';
 import { messagingConsumers } from '../documents/adapters/inbound/messaging/rabbitmq-document-consumer';
+import type { SweeperSettings } from '../documents/adapters/inbound/scheduling/sweeper-settings';
 import type { AppConfig } from '../shared/config';
 
 /**
@@ -121,4 +122,12 @@ export function consumerProviders(config: AppConfig): Provider[] {
   return config.ADAPTERS === 'in-memory'
     ? [InMemoryDocumentConsumer, ProcessMessageDispatcher]
     : messagingConsumers;
+}
+
+/** The worker's sweeper settings (SWEEPER_*), checked against the retry and Schematron limits. */
+export function sweeperSettings(
+  _config: AppConfig,
+  _env: NodeJS.ProcessEnv = process.env,
+): SweeperSettings {
+  throw new Error('sweeperSettings is not implemented yet');
 }

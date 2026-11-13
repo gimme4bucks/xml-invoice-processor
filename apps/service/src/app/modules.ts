@@ -4,14 +4,22 @@ import { CqrsModule } from '@nestjs/cqrs';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
 import { ProcessDocumentHandler } from '../documents/application/commands/process-document';
+import { RequeueDocumentHandler } from '../documents/application/commands/requeue-document';
 import { SubmitDocumentHandler } from '../documents/application/commands/submit-document';
 import { queryHandlers } from '../documents/application/queries/document-queries';
 import { OutboxRelay } from '../documents/application/relay/outbox-relay';
+import { StuckDocumentSweeper } from '../documents/application/sweeper/stuck-document-sweeper';
 import { DocumentsController } from '../documents/adapters/inbound/http/documents.controller';
 import { HealthController } from '../documents/adapters/inbound/http/health.controller';
 import { InMemoryDocumentConsumer } from '../documents/adapters/inbound/messaging/in-memory-consumer';
 import { ProcessMessageDispatcher } from '../documents/adapters/inbound/messaging/process-message-dispatcher';
 import { RelayLoop } from '../documents/adapters/inbound/messaging/relay-loop';
+import { SweeperLoop } from '../documents/adapters/inbound/scheduling/sweeper-loop';
+import {
+  DEFAULT_SWEEPER_SETTINGS,
+  SWEEPER_SETTINGS,
+  type SweeperSettings,
+} from '../documents/adapters/inbound/scheduling/sweeper-settings';
 import { AUTH_OPTIONS, type AuthOptions } from '../shared/auth/auth-options';
 import { JwtAuthGuard } from '../shared/auth/jwt-auth.guard';
 import { loggerParams, type LoggingOptions } from '../shared/logging/logging';
@@ -74,14 +82,17 @@ export class ApiModule {
   }
 }
 
-/**
- * Worker process: consumes messages, processes documents and runs the outbox relay. `consumers`
- * is the inbound messaging adapter: the in-memory broker's (walking skeleton) or RabbitMQ's.
- */
 export interface WorkerOptions {
   logging?: LoggingOptions;
+  /** How often to look for stuck documents, and when a document counts as stuck (ADR 0014). */
+  sweeper?: SweeperSettings;
 }
 
+/**
+ * Worker process: consumes messages, processes documents, runs the outbox relay and sweeps for
+ * stuck documents. `consumers` is the inbound messaging adapter: the in-memory broker's (walking
+ * skeleton) or RabbitMQ's.
+ */
 @Module({})
 export class WorkerModule {
   static register(
@@ -96,7 +107,16 @@ export class WorkerModule {
         AdaptersModule.register(adapters),
         LoggerModule.forRoot(loggerParams(options.logging ?? { level: 'info' })),
       ],
-      providers: [ProcessDocumentHandler, OutboxRelay, RelayLoop, ...consumers],
+      providers: [
+        ProcessDocumentHandler,
+        RequeueDocumentHandler,
+        OutboxRelay,
+        RelayLoop,
+        StuckDocumentSweeper,
+        SweeperLoop,
+        { provide: SWEEPER_SETTINGS, useValue: options.sweeper ?? DEFAULT_SWEEPER_SETTINGS },
+        ...consumers,
+      ],
     };
   }
 }
