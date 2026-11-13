@@ -75,13 +75,16 @@ model IdempotencyRecord {
 }
 
 /// Document storage behind the BlobStore port (original XML, processing result).
-/// Kept in Postgres for now so it shares the transaction; S3 is a documented follow-up.
+/// BLOB_STORE=postgres keeps the bytes in `content`. With BLOB_STORE=s3 (ADR 0016) the row is only
+/// the reference: `content` is NULL and the bytes are in the bucket under their sha256.
 model Blob {
   key         String   @id
   contentType String   @map("content_type")
-  content     Bytes
+  content     Bytes?
   sha256      String
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
+  /// The orphan collector asks whether any blob still references an object.
+  @@index([sha256], map: "blobs_sha256_idx")
   @@map("blobs")
 }

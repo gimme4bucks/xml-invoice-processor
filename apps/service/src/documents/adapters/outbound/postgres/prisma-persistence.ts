@@ -311,6 +311,9 @@ export class PrismaBlobStore extends BlobStore {
   async get(key: string): Promise<Blob | undefined> {
     const row = await guardUnavailable(() => this.prisma.blob.findUnique({ where: { key } }));
     if (!row) return undefined;
+    if (row.content === null) {
+      throw new Error(`Blob ${key} is in the object store: reading it needs BLOB_STORE=s3`);
+    }
     const content = Buffer.from(row.content);
     if (createHash('sha256').update(content).digest('hex') !== row.sha256) {
       throw new Error(`Blob ${key} does not match its sha256`);
