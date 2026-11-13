@@ -131,8 +131,25 @@ export async function redrive(
 export async function restoreStack(): Promise<void> {
   const paused = (await compose('ps', '--status', 'paused', '--services')).trim();
   if (paused) await compose('unpause', ...paused.split('\n'));
-  await compose('up', '-d', '--wait', '--no-deps', 'postgres', 'rabbitmq', 'worker');
+  await compose('start', 'postgres', 'rabbitmq');
+  await waitHealthy('postgres', 'rabbitmq');
+  await compose('start', 'worker');
   await broker.purge(infra.queues.dlq);
+}
+
+/**
+ * Waits until compose reports the services healthy. After a long pause a container stays
+ * `unhealthy` until its next healthcheck passes, and compose refuses to start a service whose
+ * dependency is unhealthy.
+ */
+export async function waitHealthy(...services: string[]): Promise<void> {
+  for (const service of services) {
+    await waitUntil(
+      `${service} to be healthy`,
+      async () => (await compose('ps', '--format', '{{.Health}}', service)).trim() === 'healthy',
+      90_000,
+    );
+  }
 }
 
 const terminal = new Set(['DocumentProcessed', 'DocumentProcessingFailed']);

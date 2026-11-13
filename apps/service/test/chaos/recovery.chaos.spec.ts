@@ -9,6 +9,7 @@ import {
   redrive,
   requeues,
   restoreStack,
+  waitHealthy,
   waitUntil,
 } from './support/chaos';
 
@@ -75,6 +76,7 @@ describe('recovering stuck documents (chaos)', () => {
       // (they are long unchanged), and this scenario is about the redrive.
       await compose('kill', '-s', 'SIGKILL', 'worker');
       await compose('unpause', 'postgres');
+      await waitHealthy('postgres');
       expect(await broker.depth(infra.queues.dlq)).toBe(3);
 
       const dryRun = await redrive('--dry-run');
