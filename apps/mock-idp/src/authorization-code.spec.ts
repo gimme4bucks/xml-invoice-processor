@@ -267,6 +267,14 @@ describe('mock IdP: Authorization Code + PKCE', () => {
     expect(html).not.toContain('wrong');
   });
 
+  it('treats inherited property names as unknown users', async () => {
+    for (const username of ['constructor', '__proto__', 'toString']) {
+      const res = await login(newFlow().params, { username, password: 'x' });
+      expect(res.status, username).toBe(401);
+      expect(await res.text()).toContain('Invalid username or password.');
+    }
+  });
+
   it('escapes every reflected value in the login form', async () => {
     const flow = newFlow({ state: '"><script>alert(1)</script>' });
     const html = await (await authorize(flow.params)).text();
