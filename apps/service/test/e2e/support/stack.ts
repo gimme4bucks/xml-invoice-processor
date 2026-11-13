@@ -15,13 +15,14 @@ import { type PeppolFixture, peppolFixture } from '../../fixtures/peppol';
 
 /**
  * Helpers for the end-to-end tests. They talk to the running compose stack
- * (`docker compose --profile full up -d --build --wait`) over real HTTP, with tokens from the mock
- * IdP, and stop or freeze its containers for the outage scenarios. Nothing here sleeps for a fixed
- * time: every wait polls a condition until a deadline.
+ * (`docker compose --profile full up -d --build --wait`) over HTTPS through the edge, with tokens
+ * from the mock IdP, and stop or freeze its containers for the outage scenarios. `pnpm e2e` trusts
+ * the edge's root certificate (NODE_EXTRA_CA_CERTS); nothing here disables verification. Nothing
+ * here sleeps for a fixed time: every wait polls a condition until a deadline.
  */
 export const stack = {
-  apiUrl: process.env.API_BASE_URL ?? 'http://localhost:3000',
-  idpUrl: process.env.IDP_BASE_URL ?? 'http://localhost:4000',
+  apiUrl: process.env.API_BASE_URL ?? 'https://localhost:3443',
+  idpUrl: process.env.IDP_BASE_URL ?? 'https://localhost:4443',
   /** The compose defaults (docker-compose.yml): the fake VIES fails twice per new VAT number. */
   viesFailuresPerNumber: Number(process.env.VIES_UNAVAILABLE_TIMES_PER_NUMBER ?? 2),
   invalidVatNumber: (process.env.VIES_INVALID_VAT_NUMBERS ?? 'NL999999999B99').split(',')[0]!,
