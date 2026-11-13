@@ -44,7 +44,7 @@ jobs:
       - run: pnpm verify
 
   contract:
-    name: Port contracts against Postgres and RabbitMQ
+    name: Port contracts against Postgres, RabbitMQ and S3
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -64,8 +64,25 @@ jobs:
         ports: ['5672:5672']
         options: >-
           --health-cmd "rabbitmq-diagnostics -q ping" --health-interval 3s --health-timeout 5s --health-retries 30
+      # The object store of docker-compose.yml (ADR 0016). The contract tests create their own bucket.
+      s3:
+        image: versity/versitygw:v1.10.0
+        env:
+          ROOT_ACCESS_KEY_ID: xip
+          ROOT_SECRET_ACCESS_KEY: xip-secret
+          VGW_REGION: eu-central-1
+          VGW_HEALTH: /health
+          VGW_BACKEND: posix
+          VGW_BACKEND_ARG: /tmp
+        ports: ['7070:7070']
+        options: >-
+          --health-cmd "wget -q -O /dev/null http://127.0.0.1:7070/health" --health-interval 2s --health-timeout 3s --health-retries 30
     env:
       AMQP_URL: amqp://xip:xip@localhost:5672
+      S3_ENDPOINT: http://localhost:7070
+      S3_REGION: eu-central-1
+      S3_ACCESS_KEY_ID: xip
+      S3_SECRET_ACCESS_KEY: xip-secret
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1

@@ -86,6 +86,30 @@ services:
       retries: 30
     restart: unless-stopped
 
+  # The object store for the documents' bytes (ADR 0016): Versity S3 Gateway on a local directory.
+  # Its posix backend shows every top-level directory as a bucket, so the bucket setup is a mkdir
+  # before the gateway starts. Lifecycle rules are not supported (ADR 0016 does not need them).
+  s3:
+    image: versity/versitygw:v1.10.0
+    profiles: [infra, full]
+    entrypoint: ['/bin/sh', '-c', 'mkdir -p "/data/$${S3_BUCKET}" && exec versitygw posix /data']
+    environment:
+      S3_BUCKET: ${S3_BUCKET:-xip-documents}
+      ROOT_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-xip}
+      ROOT_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-xip-secret}
+      VGW_REGION: ${S3_REGION:-eu-central-1}
+      VGW_HEALTH: /health
+    ports:
+      - '${S3_PORT:-7070}:7070'
+    volumes:
+      - s3-data:/data
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:7070/health']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
   # One-shot: applies pending migrations, then exits. api and worker wait for it to succeed.
   migrate:
     <<: *service
@@ -212,4 +236,5 @@ services:
 
 volumes:
   postgres-data:
+  s3-data:
   edge-data:
