@@ -4,6 +4,11 @@
   "description": "Support view in the browser: sign in with Authorization Code + PKCE and follow documents across organisations (read-only).",
   "license": "UNLICENSED",
   "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  },
   "dependencies": {
     "react": "19.3.1",
     "react-dom": "19.3.1"
