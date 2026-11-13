@@ -16,6 +16,8 @@ paths, verifiable acceptance criteria and a Definition of Done (see `CLAUDE.md`)
 | 3     | [G07 Integration & e2e](G07-integration.md)           | all above  | –              |
 | 4a    | [G08 HTTPS at the edge](G08-https.md)                 | v1.0.0     | G09            |
 | 4a    | [G09 Unhappy path operations](G09-unhappy-path.md)    | v1.0.0     | G08            |
+| 4b    | [G10 Chaos tests](G10-chaos-tests.md)                 | G08, G09   | G11            |
+| 4b    | [G11 Credit notes](G11-credit-notes.md)               | G08        | G10            |
 
 Phase 4 (after v1.0.0) adds the extras. From G08 on, every package works test-first (red,
 green, refactor; see `CLAUDE.md`).

@@ -136,8 +136,13 @@ quick.
 docker compose logs -f api | grep -v /health
 ```
 
-The worker logs only at startup and on errors, not for every message. Its work shows in the event
-history and in RabbitMQ instead.
+The worker writes one JSON line for every message it handles: document id, attempt, outcome,
+duration and the correlation id from the intake request. The same correlation id therefore links
+a request to its processing:
+
+```bash
+docker compose logs -f worker
+```
 
 **5. HTTPS at the edge.** The certificate is verified against the edge's own CA, verification
 fails without it, and plain HTTP is refused instead of redirected:
@@ -302,6 +307,7 @@ order it was made, is in the [decision log](docs/decision-log.md).
 | [Documents in PostgreSQL behind a `BlobStore` port](docs/adr/0011-document-storage-in-postgresql-behind-blobstore-port.md)    | S3 was optional. With a 1 MiB limit, Postgres keeps the document in the same transaction as its event. An S3 adapter is a later step.                                                                                                                                    |
 | [Problem Details, JSON](docs/adr/0012-problem-details-and-json-responses.md)                                                  | One error format with stable codes.                                                                                                                                                                                                                                      |
 | [TLS at the edge (Caddy)](docs/adr/0013-tls-at-the-edge.md)                                                                   | HTTPS only, like behind a production load balancer: the services stay plain HTTP inside the network. Plain HTTP fails instead of redirecting, so no secret is sent in clear text first. Costs an extra container and a local CA that clients must trust (`pnpm tls:ca`). |
+| [Recovering stuck documents](docs/adr/0014-recovering-stuck-documents.md)                                                     | `xip redrive` for the DLQ and a sweeper in every worker, both requeueing through the outbox with an event in the history. The re-drive is deliberate and precise; the sweeper is the safety net that needs no operator. A poison document loops slowly but visibly.      |
 
 ## Assumptions
 

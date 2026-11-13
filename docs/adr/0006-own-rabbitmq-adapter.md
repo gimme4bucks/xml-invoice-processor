@@ -80,5 +80,5 @@ Spikes [02a](../spikes/02a-rabbitmq-golevelup.md) and [02b](../spikes/02b-rabbit
 
 - Evaluate amqplib's built-in recovery, and RabbitMQ's `delayed_retry`.
 - Delivery limit: 10 (broker restarts and crashes also count, see spike 02b).
-- Replaying messages from the DLQ (e.g. a shovel or an admin command) is not built; it is a follow-up.
+- Replaying messages from the DLQ: done as the admin command `xip redrive`, which requeues through the outbox instead of shovelling messages ([ADR 0014](0014-recovering-stuck-documents.md)).
 - Optional chaos tests (`pnpm test:chaos`).
