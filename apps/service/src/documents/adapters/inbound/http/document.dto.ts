@@ -3,7 +3,7 @@ import type { DocumentEventType, FailureReason } from '../../../domain/document-
 import type { DocumentStatus, DocumentType, InvoiceDirection } from '../../../domain/value-objects';
 import type { DocumentView } from '../../../application/ports';
 import type { HistoryEntry } from '../../../application/queries/document-queries';
-import { documentStatuses } from './request-validation';
+import { documentStatuses, documentTypes } from './request-validation';
 
 // Response shapes of the public API. Views are mapped field by field, so a new internal field
 // (like the stream version or organisation id) never leaks by accident.
@@ -15,7 +15,7 @@ export class SubmittedDocumentDto {
 
 export class DocumentDto {
   @ApiProperty({ format: 'uuid' }) documentId!: string;
-  @ApiProperty({ enum: ['Invoice'] }) documentType!: DocumentType;
+  @ApiProperty({ enum: documentTypes }) documentType!: DocumentType;
   @ApiProperty({ enum: ['purchase', 'sales'], description: "From your organisation's view" })
   direction!: InvoiceDirection;
   @ApiProperty({ enum: documentStatuses }) status!: DocumentStatus;

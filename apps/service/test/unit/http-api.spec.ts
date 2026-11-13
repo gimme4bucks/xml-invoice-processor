@@ -17,6 +17,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createInMemoryAdapters, inMemoryProviders } from '../../src/app/adapters';
 import { ApiModule, type ApiOptions } from '../../src/app/modules';
 import type { AuthOptions } from '../../src/shared/auth/auth-options';
+import type { DocumentListDto } from '../../src/documents/adapters/inbound/http/document.dto';
 import { MAX_DOCUMENT_BYTES } from '../../src/documents/adapters/inbound/http/xml-body';
 import { configureHttpApp, httpAppOptions } from '../../src/shared/http/http-app';
 import { peppolFixture } from '../fixtures/peppol';
@@ -480,12 +481,9 @@ describe('HTTP API', () => {
       const invoices = await http()
         .get('/documents?type=Invoice&limit=100')
         .set('Authorization', await asCustomer());
-      expect(invoices.body.items.length).toBeGreaterThan(0);
-      expect(
-        invoices.body.items.every(
-          (item: { documentType: string }) => item.documentType === 'Invoice',
-        ),
-      ).toBe(true);
+      const types = (invoices.body as DocumentListDto).items.map((item) => item.documentType);
+      expect(types.length).toBeGreaterThan(0);
+      expect(new Set(types)).toEqual(new Set(['Invoice']));
     });
 
     it.each([

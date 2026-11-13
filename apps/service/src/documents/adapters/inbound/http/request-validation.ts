@@ -1,7 +1,7 @@
 import { createParamDecorator, type ExecutionContext, type PipeTransform } from '@nestjs/common';
 import type { Request } from 'express';
 import { z } from 'zod';
-import type { DocumentStatus } from '../../../domain/value-objects';
+import type { DocumentStatus, DocumentType } from '../../../domain/value-objects';
 import { ApiProblem } from '../../../../shared/problem-details/problem-details';
 
 export const documentStatuses = [
@@ -10,6 +10,8 @@ export const documentStatuses = [
   'Completed',
   'Failed',
 ] as const satisfies readonly DocumentStatus[];
+
+export const documentTypes = ['Invoice', 'CreditNote'] as const satisfies readonly DocumentType[];
 
 /** Document ids are UUIDs; anything else cannot exist and must not reach the database. */
 export const documentIdSchema = z.uuid({ error: 'must be a UUID' });
@@ -21,6 +23,7 @@ export const idempotencyKeySchema = z
 
 export const listDocumentsQuerySchema = z.strictObject({
   status: z.enum(documentStatuses).optional(),
+  type: z.enum(documentTypes).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(20),
   /** Opaque, produced by the previous page. */
   cursor: z
