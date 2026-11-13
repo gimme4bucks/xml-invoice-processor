@@ -1,6 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  type OnApplicationBootstrap,
+  type OnApplicationShutdown,
+} from '@nestjs/common';
 import { BlobReferences } from './blob-references';
 import { ObjectStore } from './object-store';
+import { ORPHAN_SWEEP_SETTINGS, type OrphanSweepSettings } from './s3-config';
 
 export interface OrphanReport {
   /** Objects old enough to be looked at. */
@@ -35,4 +41,17 @@ export class OrphanObjectCollector {
     }
     return report;
   }
+}
+
+/** Runs the collector in every worker, once per interval. */
+@Injectable()
+export class OrphanSweepLoop implements OnApplicationBootstrap, OnApplicationShutdown {
+  constructor(
+    private readonly collector: OrphanObjectCollector,
+    @Inject(ORPHAN_SWEEP_SETTINGS) private readonly settings: OrphanSweepSettings,
+  ) {}
+
+  onApplicationBootstrap(): void {}
+
+  onApplicationShutdown(): void {}
 }

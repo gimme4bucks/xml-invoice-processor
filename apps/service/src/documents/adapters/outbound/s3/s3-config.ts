@@ -14,3 +14,20 @@ export interface S3Config {
   /** Absent in a deployment: the SDK's default chain finds them (environment, IAM role). */
   credentials?: { accessKeyId: string; secretAccessKey: string };
 }
+
+/** When the worker deletes unreferenced objects (ADR 0016). */
+export interface OrphanSweepSettings {
+  intervalMs: number;
+  /** Only objects written longer ago than this are looked at. */
+  minAgeMs: number;
+}
+
+export const ORPHAN_SWEEP_SETTINGS = Symbol('OrphanSweepSettings');
+
+export function loadS3Config(_env: NodeJS.ProcessEnv): S3Config {
+  throw new Error('Not implemented');
+}
+
+export function loadOrphanSweepSettings(_env: NodeJS.ProcessEnv): OrphanSweepSettings {
+  throw new Error('Not implemented');
+}
