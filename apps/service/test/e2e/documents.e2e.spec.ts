@@ -13,6 +13,12 @@ import { Api, clients, expectBody, freshVatNumber, invoice, stack } from './supp
  * worker. The fake VIES of the stack is unavailable for the first checks of every VAT number it
  * has not seen (VIES_UNAVAILABLE_TIMES_PER_NUMBER=2), so a fresh number fixes the retry count.
  */
+/** A credit note fixture under a fresh number (BT-1), so the stack never sees the same bytes twice. */
+const creditNote = (fixture: 'credit-note' | 'credit-note-bad-type-code'): Buffer =>
+  Buffer.from(
+    peppolFixture(fixture).toString('utf8').replace('CN-2026-0007', `E2E-CN-${randomUUID()}`),
+  );
+
 describe('documents (e2e)', () => {
   let supplier: Api;
   let customer: Api;
@@ -85,6 +91,45 @@ describe('documents (e2e)', () => {
       expect(violations.every((v) => v.flag === 'fatal')).toBe(true);
     });
 
+    it('takes a credit note to Completed, with its canonical credit note result', async () => {
+      const documentId = await supplier.accepted(creditNote('credit-note'));
+
+      expect(await supplier.waitForFinal(documentId)).toMatchObject({
+        documentType: 'CreditNote',
+        direction: 'sales',
+        status: 'Completed',
+      });
+      expect(await supplier.result(documentId)).toMatchObject({
+        status: 'Completed',
+        result: {
+          direction: 'sales',
+          creditNote: {
+            documentType: 'CreditNote',
+            creditNoteNumber: expect.stringMatching(/^E2E-CN-/),
+            typeCode: '381',
+            precedingInvoices: [{ invoiceNumber: 'INV-2026-0101', issueDate: '2026-11-02' }],
+            lines: [{ id: '1', quantity: '1', netAmount: '100.00' }],
+            totals: { payableAmount: '121.00' },
+          },
+        },
+      });
+      const list = expectBody<DocumentListDto>(
+        await supplier.get('/documents?type=CreditNote&limit=100'),
+        200,
+      );
+      expect(list.items.map((item) => item.documentId)).toContain(documentId);
+      expect(list.items.every((item) => item.documentType === 'CreditNote')).toBe(true);
+    });
+
+    it('fails a credit note with an invoice type code, on the Peppol credit note rule', async () => {
+      const documentId = await supplier.accepted(creditNote('credit-note-bad-type-code'));
+
+      const document = await supplier.waitForFinal(documentId);
+      expect(document).toMatchObject({ documentType: 'CreditNote', status: 'Failed' });
+      expect(document.failure?.code).toBe('BUSINESS_RULES_VIOLATED');
+      expect(document.failure?.violations?.map((v) => v.ruleId)).toContain('PEPPOL-EN16931-P0101');
+    });
+
     it('retries while VIES is unavailable and then completes', async () => {
       const documentId = await supplier.accepted(
         invoice('valid-sales', { customerVat: freshVatNumber() }),
@@ -131,14 +176,6 @@ describe('documents (e2e)', () => {
         errors: [expect.objectContaining({ message: expect.any(String) })],
       });
       expect(response.headers.get('content-type')).toContain('application/problem+json');
-    });
-
-    it('rejects a CreditNote as not supported yet', async () => {
-      const response = await supplier.submit(peppolFixture('credit-note'));
-      expect(expectBody(response, 422)).toMatchObject({
-        code: 'DOCUMENT_REJECTED',
-        reason: 'unsupported-document-type',
-      });
     });
 
     it('rejects a DOCTYPE (XXE guard) without resolving it', async () => {

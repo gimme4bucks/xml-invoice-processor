@@ -4,7 +4,7 @@ import path from 'node:path';
 /**
  * Peppol BIS Billing 3.0 fixtures, all written for this project (OpenPeppol's examples have no
  * licence). Organisation 0106:11111111 is the supplier on valid-sales and the customer on
- * valid-purchase.
+ * valid-purchase, and the supplier on both credit notes.
  */
 export type PeppolFixture =
   | 'valid-sales'
@@ -13,6 +13,7 @@ export type PeppolFixture =
   | 'missing-issue-date'
   | 'doctype-xxe'
   | 'credit-note'
+  | 'credit-note-bad-type-code'
   | 'large-300-lines';
 
 export function peppolFixture(name: PeppolFixture): Buffer {
