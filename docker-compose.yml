@@ -243,7 +243,7 @@ services:
   # inside the network. Plain HTTP to its ports gets a 400, never a redirect. The configuration is
   # mounted read-only and the admin API is off (deploy/caddy/Caddyfile).
   edge:
-    image: caddy:2.11.7-alpine
+    image: caddy:2.11.8-alpine
     profiles: [full]
     # Not root: the ports are above 1024, and the image's /data/caddy is world-writable, so a new
     # edge-data volume is writable for any user.

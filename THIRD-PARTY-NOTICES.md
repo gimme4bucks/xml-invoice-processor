@@ -88,4 +88,4 @@ Libxml2 Contributors); both licence texts ship with the npm package.
 The image serves the support app ([ADR 0018](docs/adr/0018-support-web-app.md)) with Caddy.
 
 - **React and React DOM** (MIT, Copyright (c) Meta Platforms, Inc. and affiliates) are bundled into the app. The build writes the licence texts of every bundled dependency to `third-party-licenses.md`, which is served next to the app.
-- **Caddy** (Apache-2.0, Copyright 2015 Matthew Holt and The Caddy Authors) is the image's base (`caddy:2.11.7-alpine`), unmodified. The edge service uses the same upstream image.
+- **Caddy** (Apache-2.0, Copyright 2015 Matthew Holt and The Caddy Authors) is the image's base, unmodified and pinned to the same release as the edge service's image.

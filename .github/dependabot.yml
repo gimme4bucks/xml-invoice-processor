@@ -20,6 +20,9 @@ updates:
       # The runtime is Node 22, so its types follow 22.x.
       - dependency-name: '@types/node'
         update-types: ['version-update:semver-major']
+      # jsdom 30 and later need Node 22.22; the runtime is 22.14 (.nvmrc).
+      - dependency-name: jsdom
+        versions: ['>=30']
 
   - package-ecosystem: github-actions
     directory: /
