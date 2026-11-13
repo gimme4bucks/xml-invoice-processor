@@ -79,6 +79,7 @@ apps/mock-idp/                 OAuth2 client-credentials issuer for dev/demo/e2e
    a PR with `gh pr create`; a human reviews and squash-merges.
 10. **Write everything in English** (code, comments, docs, commit messages). Use Conventional Commits (`feat:`, `fix:`, `test:`, `docs:`, `chore:`…).
 11. **Do not use `import type` for classes that Nest injects.** It strips the decorator metadata that DI needs.
+12. **Test first: red, green, refactor.** Every change in behaviour, including a bug fix, starts with a failing test. See [Test-driven development](#test-driven-development-red-green-refactor).
 
 ## Commands
 
@@ -105,6 +106,28 @@ Copy `.env.example` to `.env` (repo root and `apps/service/`) for local work.
 - **Walking skeleton:** `test/unit/walking-skeleton.spec.ts` must stay green. It proves the API and worker wiring end to end.
 - **E2E (G07):** the full stack via compose, including infrastructure outages.
 
+## Test-driven development (red, green, refactor)
+
+Work in small steps, one piece of behaviour at a time:
+
+1. **Red:** write the smallest test for the next piece of behaviour and run it. It must fail for the expected reason: a failing assertion or missing behaviour, not a typo, an import error or a broken fixture.
+2. **Green:** write the least production code that makes it pass, and run the tests again.
+3. **Refactor:** clean up the code and the tests while every test stays green. Add no behaviour in this step.
+
+Also:
+
+- **Bug fixes:** start with a test that reproduces the bug.
+- **Never weaken or delete a test to get to green.** If a requirement changed, say so in the PR.
+- **Test at the lowest level that can show the behaviour:**
+  - domain and handlers against the in-memory adapters first;
+  - a contract test for an adapter;
+  - e2e only for what needs the whole stack, such as TLS, outages and wiring.
+- **Infrastructure and configuration** (compose, Dockerfile, CI, proxy config) often have no unit to test. Use an e2e test or a scripted check that fails before the change and passes after it, and name it in the PR.
+- **Leave evidence:**
+  - Commit each red test before the code that makes it pass (`test:` first, then `feat:` or `fix:`). The PR's commit list then shows the order; the squash merge keeps it on the PR.
+  - In **How verified**, show the red run for each behaviour (test name and failure message) and then the green run.
+- Docs-only changes need no test.
+
 ## Definition of done (every work package)
 
 1. `pnpm verify` exits 0. `pnpm test:contract` passes for adapters you touched (with `pnpm infra:up`).
@@ -115,7 +138,8 @@ Copy `.env.example` to `.env` (repo root and `apps/service/`) for local work.
    - **Decisions & trade-offs** (the coordinator folds these into ADRs and the AI log)
    - **Contract changes**
    - **Open points**
-4. CI is green. A human reviews before merge (squash merge).
+4. Every change in behaviour was test-driven: the PR's commits put each red test before its implementation, and **How verified** shows the red and the green runs.
+5. CI is green. A human reviews before merge (squash merge).
 
 ## Known pitfalls (from the spikes)
 

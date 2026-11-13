@@ -14,6 +14,11 @@ paths, verifiable acceptance criteria and a Definition of Done (see `CLAUDE.md`)
 | 2b    | [G05 HTTP & security](G05-http-security.md)           | foundation | G02, G06       |
 | 2b    | [G06 Delivery (Docker, CI/CD)](G06-delivery.md)       | foundation | G02, G05       |
 | 3     | [G07 Integration & e2e](G07-integration.md)           | all above  | –              |
+| 4a    | [G08 HTTPS at the edge](G08-https.md)                 | v1.0.0     | G09            |
+| 4a    | [G09 Unhappy path operations](G09-unhappy-path.md)    | v1.0.0     | G08            |
+
+Phase 4 (after v1.0.0) adds the extras. From G08 on, every package works test-first (red,
+green, refactor; see `CLAUDE.md`).
 
 The foundation fixes the contracts (ports, domain events, Prisma schema, contract test suites)
 and a walking skeleton that already runs end to end on in-memory adapters. Each package replaces
