@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { DocumentEvent } from '../../../domain/document-events';
 import type { DocumentStatus, DocumentType } from '../../../domain/value-objects';
 import {
@@ -143,15 +143,25 @@ export class InMemoryBlobStore extends BlobStore {
   }
 
   async put(blob: Blob, _tx: Transaction): Promise<void> {
-    this.db.tables.blobs.set(blob.key, { ...blob, content: Buffer.from(blob.content) });
+    this.db.tables.blobs.set(blob.key, {
+      ...blob,
+      content: Buffer.from(blob.content),
+      sha256: sha256(blob.content),
+    });
   }
 
+  /** Like the real stores, never hands out bytes that changed since they were stored. */
   async get(key: string): Promise<Blob | undefined> {
-    const blob = this.db.tables.blobs.get(key);
+    const stored = this.db.tables.blobs.get(key);
+    if (!stored) return undefined;
     // structuredClone (rollback snapshots) turns Buffers into Uint8Arrays; normalise back.
-    return blob ? { ...blob, content: Buffer.from(blob.content) } : undefined;
+    const content = Buffer.from(stored.content);
+    if (sha256(content) !== stored.sha256) throw new Error(`Blob ${key} does not match its sha256`);
+    return { key: stored.key, contentType: stored.contentType, content };
   }
 }
+
+const sha256 = (content: Uint8Array): string => createHash('sha256').update(content).digest('hex');
 
 export class InMemoryOutbox extends Outbox {
   private readonly inFlight = new Set<string>();
