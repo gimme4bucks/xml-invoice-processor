@@ -313,3 +313,32 @@ describe('support access (ADR 0017)', () => {
     });
   });
 });
+
+describe('support rate limit', () => {
+  let tokens: TestTokens;
+  let app: INestApplication;
+
+  beforeAll(async () => {
+    tokens = await testTokens();
+    app = await startTestApi(tokens.auth, { rateLimit: { limit: 2, windowMs: 60_000 } });
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  it('429 RATE_LIMITED per support employee (sub): there is no organisation', async () => {
+    const list = async (token: string) =>
+      request(httpServer(app)).get('/support/documents').set('Authorization', `Bearer ${token}`);
+    const alice = await tokens.support('support-alice');
+    expect((await list(alice)).status).toBe(200);
+    expect((await list(alice)).status).toBe(200);
+    const limited = await list(alice);
+    expect(limited.status).toBe(429);
+    expect(limited.body.code).toBe('RATE_LIMITED');
+    expect(Number(limited.headers['retry-after'])).toBeGreaterThan(0);
+
+    // Another employee, from the same address, has a budget of their own.
+    expect((await list(await tokens.support('support-bob'))).status).toBe(200);
+  });
+});
