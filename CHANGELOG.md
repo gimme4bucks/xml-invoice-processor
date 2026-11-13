@@ -18,6 +18,11 @@ All notable changes to this project. The format follows
   - `xip redrive [--dry-run] [--limit N]` requeues dead-lettered documents through the outbox.
   - A sweeper in every worker requeues documents that stay unchanged too long.
   - Both record `ProcessingRequeued` in the document's history.
+- **Credit notes** ([ADR 0015](docs/adr/0015-credit-notes.md)):
+  - Peppol BIS 3.0 credit notes (UBL 2.1 `CreditNote`) are validated against the unmodified UBL CreditNote XSD and the same official rules as invoices.
+  - They are mapped into the canonical model, with the credited invoice as the preceding invoice reference.
+  - `documentType` is `Invoice` or `CreditNote`, and `GET /documents?type=` filters on it.
+  - The demo follows a credit note to `Completed`.
 - **Worker logs:** one JSON line per handled message, with IDs, attempt, outcome, duration and correlation id.
 - **Test-driven development** (red, green, refactor) is a hard rule for every work package (`CLAUDE.md`).
 

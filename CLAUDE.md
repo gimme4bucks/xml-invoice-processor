@@ -18,7 +18,7 @@ doubt, choose the boring and visible option.
 
 ADRs live in `docs/adr/`, spike evidence in `docs/spikes/`. In short:
 
-- **Format:** Peppol BIS 3.0 (UBL 2.1 Invoice). CreditNote is rejected as "not supported yet".
+- **Format:** Peppol BIS 3.0, as a UBL 2.1 `Invoice` or `CreditNote` (ADR 0015). Each document type has its own root, XSD and mapping into the one canonical model; any other root is rejected.
 - **Validation is split.** Structure (DOCTYPE ban, root element, UBL 2.1 XSD via libxml2-wasm) runs **synchronously at intake**. The official EN 16931 + Peppol Schematron rules (SaxonJS) run **asynchronously in the worker**; a fatal violation means `Failed`.
 - **Event sourcing in Postgres:** one stream per document, a read model updated **in the same transaction**, and a DB trigger that makes events append-only.
 - **Transactional outbox.** Only the outbox relay publishes to RabbitMQ. Consumers are idempotent through the aggregate state plus optimistic concurrency on `(stream_id, version)`. There is no inbox table and no saga.
