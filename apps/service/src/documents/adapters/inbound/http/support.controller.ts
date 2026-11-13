@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Query } from '@nestjs/common';
+import { Controller, Get, Param, Query, UseInterceptors } from '@nestjs/common';
 import { QueryBus } from '@nestjs/cqrs';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import type { DocumentPage, DocumentView } from '../../../application/ports';
@@ -10,6 +10,7 @@ import {
 } from '../../../application/queries/support-queries';
 import { RequireScope } from '../../../../shared/auth/principal';
 import { ApiProblemResponses } from '../../../../shared/http/openapi';
+import { SupportAuditInterceptor } from './support-audit.interceptor';
 import {
   DocumentHistoryDto,
   SupportDocumentDto,
@@ -31,12 +32,14 @@ const documentId = new Validate(documentIdSchema, 'path', 'id');
 /**
  * Read-only support endpoints across organisations (ADR 0017), for support tokens with
  * `support:read` only; the guard keeps organisation tokens out. Metadata, status, failure reasons
- * and history; there is deliberately no endpoint for the XML or the processing result.
+ * and history; there is deliberately no endpoint for the XML or the processing result. Every
+ * request is audited.
  */
 @ApiTags('support')
 @ApiBearerAuth()
 @ApiProblemResponses(401, 403, 429, 500)
 @Controller('support/documents')
+@UseInterceptors(SupportAuditInterceptor)
 export class SupportDocumentsController {
   constructor(private readonly queries: QueryBus) {}
 
