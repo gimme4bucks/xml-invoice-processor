@@ -4,8 +4,9 @@
 # Profile "full": the whole stack from images, for demos and the e2e tests:
 #   docker compose --profile full up -d --build --wait
 # Clients reach it only over HTTPS through the edge (Caddy, ADR 0013): the API on
-# https://localhost:3443 and the mock IdP on https://localhost:4443. `pnpm tls:ca` exports the
-# edge's root certificate; `pnpm demo` and `pnpm e2e` do that themselves.
+# https://localhost:3443, the mock IdP on https://localhost:4443 and the support app on
+# https://localhost:5443 (ADR 0018). `pnpm tls:ca` exports the edge's root certificate; `pnpm demo`
+# and `pnpm e2e` do that themselves.
 # Images come from GHCR (TAG=1.2.3, default latest) or are built locally when missing or with
 # --build. Settings follow .env.example. The stack is tuned for the demo and the e2e tests:
 # short retry delays, a fake VIES that is unavailable for the first two checks of every VAT
@@ -205,6 +206,38 @@ services:
       start_interval: 1s
     restart: unless-stopped
 
+  # The support app (ADR 0018): static files only, served by Caddy as a non-root user (uid 10001)
+  # and reached only through the edge at https://localhost:5443. The API URL, the issuer and the
+  # client id are runtime configuration: the server writes them into /config.js and into the CSP's
+  # connect-src, so one image serves any environment.
+  web:
+    image: ghcr.io/gimme4bucks/xml-invoice-processor-web:${TAG:-latest}
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    profiles: [full]
+    read_only: true
+    init: true
+    # Caddy's storage (lock files only: no certificates here, the edge terminates TLS).
+    tmpfs:
+      - /data:uid=10001,gid=10001,mode=0700
+    environment:
+      # Fixed like AUTH_ISSUER: the edge's URLs, which the browser uses.
+      API_URL: https://localhost:3443
+      IDP_ISSUER: https://localhost:4443
+      CLIENT_ID: support-web
+      # Five minutes, like the API (ADR 0013); the image's default is a year.
+      HSTS_MAX_AGE_SECONDS: ${HSTS_MAX_AGE_SECONDS:-300}
+    # No ports: only reachable through the edge.
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:8080/']
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
+      start_interval: 1s
+    restart: unless-stopped
+
   # The only way in from the host (ADR 0013). Caddy terminates TLS with its own CA, whose root
   # stays in the edge-data volume (`down --volumes` creates a new one), and forwards plain HTTP
   # inside the network. Plain HTTP to its ports gets a 400, never a redirect. The configuration is
@@ -223,10 +256,12 @@ services:
     ports:
       - '3443:3443'
       - '4443:4443'
+      - '5443:5443'
     depends_on:
       - api
       - mock-idp
-    # A verified HTTPS request on both ports with the edge's own root certificate. Any HTTP answer
+      - web
+    # A verified HTTPS request on every port with the edge's own root certificate. Any HTTP answer
     # counts (a 502 too): this checks the edge, the services behind it have their own checks.
     healthcheck:
       test:
@@ -241,6 +276,7 @@ services:
         - /data/caddy/pki/authorities/local/root.crt
         - https://localhost:3443/health
         - https://localhost:4443/.well-known/jwks.json
+        - https://localhost:5443/
       interval: 5s
       timeout: 3s
       retries: 5

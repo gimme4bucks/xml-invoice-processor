@@ -1,0 +1,51 @@
+# The support app's static server (ADR 0018). Plain HTTP inside the compose network: the edge
+# terminates TLS (ADR 0013). The API URL, the issuer and the client id come from the environment
+# and feed both /config.js and the CSP's connect-src, so the app and its policy cannot disagree:
+#   API_URL=https://localhost:3443 IDP_ISSUER=https://localhost:4443 CLIENT_ID=support-web
+{
+	# Read-only configuration: no admin API, nothing persisted, no certificates of its own.
+	admin off
+	persist_config off
+	auto_https off
+	# HTTP/1.1 only: the edge speaks HTTP/1.1 to it, and HTTP/2 and HTTP/3 need TLS here.
+	servers {
+		protocols h1
+	}
+}
+
+:8080 {
+	root * /srv
+
+	# On every response. connect-src lists exactly the API and the IdP: the token can only be sent
+	# there. No inline scripts or styles, no other origins, no framing, no <base>, no form posts.
+	header {
+		Content-Security-Policy "default-src 'self'; connect-src {$API_URL} {$IDP_ISSUER}; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+		# The callback URL carries the code: never send it on as a Referer.
+		Referrer-Policy no-referrer
+		X-Content-Type-Options nosniff
+		Cross-Origin-Opener-Policy same-origin
+		Strict-Transport-Security "max-age={$HSTS_MAX_AGE_SECONDS}; includeSubDomains"
+		-Server
+	}
+
+	# The runtime configuration as an ES module, so the CSP's script-src applies to it and
+	# connect-src stays limited to the API and the IdP. Read again on every load.
+	handle /config.js {
+		header Content-Type "text/javascript; charset=utf-8"
+		header Cache-Control no-store
+		respond `export default {"apiUrl":"{$API_URL}","issuer":"{$IDP_ISSUER}","clientId":"{$CLIENT_ID}"};`
+	}
+
+	# Content-hashed file names: cached for a year. A missing asset is a 404, not the app's page.
+	handle /assets/* {
+		header Cache-Control "public, max-age=31536000, immutable"
+		file_server
+	}
+
+	# Every other path is the app, also /callback on a reload; index.html is always revalidated.
+	handle {
+		header Cache-Control no-cache
+		try_files {path} /index.html
+		file_server
+	}
+}
