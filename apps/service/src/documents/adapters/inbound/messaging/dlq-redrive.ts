@@ -52,12 +52,30 @@ export function leftInDlq(report: RedriveReport): number {
   return report.notFound.length + report.failed.length + report.malformed.length;
 }
 
-export function redriveSummary(_report: RedriveReport): Record<string, unknown> {
-  throw new Error('redriveSummary is not implemented yet');
+/** What `xip redrive` prints: counts first, then the IDs per outcome. Never message content. */
+export function redriveSummary(report: RedriveReport) {
+  const { dryRun, requeued, alreadyFinal, notFound, failed, malformed } = report;
+  return {
+    dryRun,
+    counts: {
+      requeued: requeued.length,
+      alreadyFinal: alreadyFinal.length,
+      notFound: notFound.length,
+      failed: failed.length,
+      malformed: malformed.length,
+      leftInDlq: leftInDlq(report),
+    },
+    requeued,
+    alreadyFinal,
+    notFound,
+    failed,
+    malformed,
+  };
 }
 
-export function redriveExitCode(_report: RedriveReport): number {
-  throw new Error('redriveExitCode is not implemented yet');
+/** Non-zero when messages stayed behind in the DLQ and need attention (or another run). */
+export function redriveExitCode(report: RedriveReport): number {
+  return !report.dryRun && leftInDlq(report) > 0 ? 1 : 0;
 }
 
 const USAGE = 'Usage: xip redrive [--dry-run] [--limit N]';

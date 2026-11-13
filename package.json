@@ -20,6 +20,7 @@
     "verify": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm depcruise && pnpm test && pnpm build",
     "infra:up": "docker compose --profile infra up -d --wait",
     "infra:down": "docker compose --profile infra down",
+    "redrive": "node --enable-source-maps --env-file-if-exists=apps/service/.env apps/service/dist/main-redrive.js",
     "demo": "node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/demo/demo.mts"
   },
   "devDependencies": {

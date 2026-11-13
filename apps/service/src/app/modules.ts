@@ -11,6 +11,7 @@ import { OutboxRelay } from '../documents/application/relay/outbox-relay';
 import { StuckDocumentSweeper } from '../documents/application/sweeper/stuck-document-sweeper';
 import { DocumentsController } from '../documents/adapters/inbound/http/documents.controller';
 import { HealthController } from '../documents/adapters/inbound/http/health.controller';
+import { DlqRedrive } from '../documents/adapters/inbound/messaging/dlq-redrive';
 import { InMemoryDocumentConsumer } from '../documents/adapters/inbound/messaging/in-memory-consumer';
 import { ProcessMessageDispatcher } from '../documents/adapters/inbound/messaging/process-message-dispatcher';
 import { RelayLoop } from '../documents/adapters/inbound/messaging/relay-loop';
@@ -117,6 +118,25 @@ export class WorkerModule {
         { provide: SWEEPER_SETTINGS, useValue: options.sweeper ?? DEFAULT_SWEEPER_SETTINGS },
         ...consumers,
       ],
+    };
+  }
+}
+
+/**
+ * `xip redrive`: a one-shot process that sends the documents of dead-lettered messages back
+ * through the outbox (ADR 0014). Logs go to `logging.destination` (stderr), the summary to stdout.
+ */
+@Module({})
+export class RedriveModule {
+  static register(adapters: Provider[], options: { logging?: LoggingOptions } = {}): DynamicModule {
+    return {
+      module: RedriveModule,
+      imports: [
+        CqrsModule.forRoot(),
+        AdaptersModule.register(adapters),
+        LoggerModule.forRoot(loggerParams(options.logging ?? { level: 'info' })),
+      ],
+      providers: [RequeueDocumentHandler, DlqRedrive],
     };
   }
 }

@@ -31,6 +31,7 @@ import {
   StubStructureValidator,
 } from '../documents/adapters/outbound/in-memory/stub-validation';
 import { postgresProviders } from '../documents/adapters/outbound/postgres/postgres-providers';
+import { AmqpConnection } from '../documents/adapters/outbound/rabbitmq/amqp-connection';
 import { loadRabbitMqConfig } from '../documents/adapters/outbound/rabbitmq/rabbitmq-config';
 import { rabbitMqProviders } from '../documents/adapters/outbound/rabbitmq/rabbitmq-providers';
 import { RandomIdGenerator, SystemClock } from '../documents/adapters/outbound/system/system';
@@ -39,7 +40,9 @@ import {
   validationProviders,
 } from '../documents/adapters/outbound/validation/validation-providers';
 import { InMemoryDocumentConsumer } from '../documents/adapters/inbound/messaging/in-memory-consumer';
+import { DeadLetterSource } from '../documents/adapters/inbound/messaging/dlq-redrive';
 import { ProcessMessageDispatcher } from '../documents/adapters/inbound/messaging/process-message-dispatcher';
+import { RabbitMqDeadLetterSource } from '../documents/adapters/inbound/messaging/rabbitmq-dead-letter-source';
 import { messagingConsumers } from '../documents/adapters/inbound/messaging/rabbitmq-document-consumer';
 import {
   loadSweeperSettings,
@@ -144,9 +147,29 @@ export function sweeperSettings(
   return loadSweeperSettings(env, longestRetryDelayMs + schematronTimeoutMs(env));
 }
 
+/**
+ * `xip redrive`, a one-shot process next to the workers: Postgres for the requeue's unit of work
+ * and RabbitMQ for the dead-letter queue. It never publishes; the workers' relay does.
+ */
 export function redriveProviders(
-  _config: AppConfig,
-  _env: NodeJS.ProcessEnv = process.env,
+  config: AppConfig,
+  env: NodeJS.ProcessEnv = process.env,
 ): Provider[] {
-  throw new Error('redriveProviders is not implemented yet');
+  if (config.ADAPTERS !== 'real') {
+    throw new Error('xip redrive needs ADAPTERS=real: the dead-letter queue is in RabbitMQ');
+  }
+  if (!config.DATABASE_URL) throw new Error('DATABASE_URL is required for xip redrive');
+  if (!config.AMQP_URL) throw new Error('AMQP_URL is required for xip redrive');
+  const rabbitMq = loadRabbitMqConfig(env);
+  return [
+    ...postgresProviders(config.DATABASE_URL),
+    { provide: AmqpConnection, useFactory: () => new AmqpConnection(rabbitMq) },
+    {
+      provide: DeadLetterSource,
+      useFactory: (connection: AmqpConnection) => new RabbitMqDeadLetterSource(connection),
+      inject: [AmqpConnection],
+    },
+    { provide: Clock, useClass: SystemClock },
+    { provide: IdGenerator, useClass: RandomIdGenerator },
+  ];
 }

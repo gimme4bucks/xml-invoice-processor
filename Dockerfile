@@ -1,7 +1,8 @@
-# One image, three commands (see the `xip` entrypoint below):
+# One image, four commands (see the `xip` entrypoint below):
 #   docker run <image> api       HTTP intake and queries
-#   docker run <image> worker    message consumer and outbox relay
+#   docker run <image> worker    message consumer, outbox relay and stuck-document sweeper
 #   docker run <image> migrate   prisma migrate deploy (one-shot)
+#   docker run <image> redrive   DLQ re-drive, [--dry-run] [--limit N] (one-shot, ADR 0014)
 #
 # Stages: base (node + pnpm) -> deps (full install) -> build -> prod-deps -> runtime.
 
@@ -72,6 +73,7 @@ case "$1" in
   api)     shift; exec node --enable-source-maps dist/main-api.js "$@" ;;
   worker)  shift; exec node --enable-source-maps dist/main-worker.js "$@" ;;
   migrate) shift; exec /app/node_modules/.bin/prisma migrate deploy "$@" ;;
+  redrive) shift; exec node --enable-source-maps dist/main-redrive.js "$@" ;;
   *)       exec "$@" ;;
 esac
 EOF
