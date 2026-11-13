@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { Api, clients, freshVatNumber, invoice } from '../e2e/support/stack';
 import {
@@ -131,4 +132,18 @@ describe('recovering stuck documents (chaos)', () => {
     },
     5 * 60_000,
   );
+
+  it('leaves a poison message in the DLQ and reports it as malformed on every run', async () => {
+    // Published straight to the DLQ: the worker would take ten deliveries to put it there.
+    const messageId = `chaos-poison-${randomUUID()}`;
+    await broker.publishTo(infra.queues.dlq, 'this is not JSON', messageId);
+
+    for (const run of ['first', 'second']) {
+      const { exitCode, summary } = await redrive();
+      expect(exitCode, `${run} run`).toBe(1);
+      expect(summary.malformed).toEqual([messageId]);
+      expect(summary.counts).toMatchObject({ requeued: 0, malformed: 1, leftInDlq: 1 });
+      expect(await broker.depth(infra.queues.dlq), `still in the DLQ after the ${run} run`).toBe(1);
+    }
+  });
 });
