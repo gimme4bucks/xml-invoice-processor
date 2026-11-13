@@ -6,6 +6,7 @@ import {
   database,
   expectExactlyOnce,
   infra,
+  largeInvoice,
   redrive,
   requeues,
   restoreStack,
@@ -99,5 +100,35 @@ describe('recovering stuck documents (chaos)', () => {
       }
     },
     10 * 60_000,
+  );
+
+  it(
+    'requeues a document whose message was lost, through the sweeper alone',
+    async () => {
+      // ProcessingStarted commits before the Schematron run, which takes seconds on 300 lines.
+      const documentId = await supplier.accepted(largeInvoice());
+      await supplier.waitFor(documentId, (d) => d.attempts >= 1);
+      await compose('kill', '-s', 'KILL', 'worker');
+      expect((await supplier.history(documentId)).at(-1)?.type, 'killed mid-attempt').toBe(
+        'ProcessingStarted',
+      );
+      expect(await database.unpublishedOutboxRows([documentId])).toBe(0);
+
+      // The killed worker's unacked delivery is back in the queue: the document's only message.
+      await waitUntil(
+        'the message back in documents.process',
+        async () => (await broker.depth(infra.queues.process)) === 1,
+        30_000,
+      );
+      expect(await broker.purge(infra.queues.process)).toBe(1);
+
+      // Nothing else is done: the sweeper finds the document unchanged for SWEEPER_STUCK_AFTER_MS
+      // (90 s in compose, swept every 10 s) and requeues the attempt that was in progress.
+      await compose('start', 'worker');
+      expect((await supplier.waitForFinal(documentId, 180_000)).status).toBe('Completed');
+      const history = await expectExactlyOnce(supplier, documentId);
+      expect(requeues(history)).toEqual([{ reason: 'sweeper', attempt: 1 }]);
+    },
+    5 * 60_000,
   );
 });
