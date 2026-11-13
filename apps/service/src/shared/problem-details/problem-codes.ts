@@ -96,7 +96,8 @@ export const problemCodes = {
   RATE_LIMITED: {
     status: 429,
     title: 'Too many requests',
-    description: 'Rate limit for your organisation exceeded; retry after `Retry-After` seconds.',
+    description:
+      'Rate limit for your organisation (a support token: for you) exceeded; retry after `Retry-After` seconds.',
   },
   INTERNAL_ERROR: {
     status: 500,
