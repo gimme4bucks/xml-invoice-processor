@@ -18,6 +18,12 @@ export interface HttpAppOptions {
    * the headers are ignored entirely, because anyone can send them.
    */
   trustProxy?: boolean;
+  /**
+   * How long browsers keep to HTTPS for this host (Strict-Transport-Security), a year by default.
+   * The compose stack sends a short one: browsers that apply HSTS to `localhost` would otherwise
+   * force every http://localhost port to HTTPS for a year.
+   */
+  hstsMaxAgeSeconds?: number;
 }
 
 /** Everything the API needs on top of ApiModule; shared by main-api.ts and the HTTP tests. */
@@ -28,7 +34,15 @@ export function configureHttpApp(app: INestApplication, options: HttpAppOptions 
   // Security headers, including Strict-Transport-Security. upgrade-insecure-requests is dropped
   // so Swagger UI also works over plain http on localhost during development; in compose, TLS is
   // terminated by the edge in front of the service.
-  app.use(helmet({ contentSecurityPolicy: { directives: { upgradeInsecureRequests: null } } }));
+  app.use(
+    helmet({
+      contentSecurityPolicy: { directives: { upgradeInsecureRequests: null } },
+      strictTransportSecurity: {
+        maxAge: options.hstsMaxAgeSeconds ?? 31_536_000,
+        includeSubDomains: true,
+      },
+    }),
+  );
   // CORS stays off (no enableCors): our clients are servers, not browsers.
   setupOpenApi(app);
 }
