@@ -99,6 +99,9 @@ services:
       API_PORT: 3000
       # Only the edge talks to it: believe the client address and scheme the edge forwards.
       TRUST_PROXY: 'true'
+      # Five minutes instead of a year: browsers that apply HSTS to localhost (Safari) would
+      # otherwise force every http://localhost port to HTTPS for a year after one visit.
+      HSTS_MAX_AGE_SECONDS: ${HSTS_MAX_AGE_SECONDS:-300}
     # No ports: only reachable through the edge.
     # Not on mock-idp: the API fetches the signing keys on the first request, so it starts
     # (and answers /health) without the IdP, as it must with a real external one.
@@ -158,6 +161,9 @@ services:
   edge:
     image: caddy:2.11.7-alpine
     profiles: [full]
+    # Not root: the ports are above 1024, and the image's /data/caddy is world-writable, so a new
+    # edge-data volume is writable for any user.
+    user: '10001:10001'
     read_only: true
     init: true
     volumes:
