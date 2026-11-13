@@ -115,3 +115,31 @@ jobs:
       - name: Stop the stack
         if: always()
         run: docker compose --profile full down --volumes
+
+  chaos:
+    name: Chaos tests against the full compose stack
+    runs-on: ubuntu-latest
+    # The suite itself takes under ten minutes; most of it is waiting for a dead-lettering and a sweep.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -F @xip/service prisma:generate
+      - run: docker compose --profile full up -d --build --wait --wait-timeout 300
+      # Pauses Postgres, kills the worker and RabbitMQ, purges a queue and runs `xip redrive`
+      # (docker compose run) against its own stack, in parallel with the e2e job. Over HTTPS
+      # through the edge, trusting its exported root certificate, like `pnpm e2e`.
+      - run: pnpm test:chaos
+      - name: Dump the stack on failure
+        if: failure()
+        run: |
+          docker compose --profile full ps --all
+          docker compose --profile full logs --no-color --timestamps
+      - name: Stop the stack
+        if: always()
+        run: docker compose --profile full down --volumes
