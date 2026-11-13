@@ -8,15 +8,20 @@ import {
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
+import { Test } from '@nestjs/testing';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { persistenceProviders } from '../../src/app/adapters';
 import { PrismaBlobReferences } from '../../src/documents/adapters/outbound/postgres/prisma-blob-references';
 import { PrismaUnitOfWork } from '../../src/documents/adapters/outbound/postgres/prisma-persistence';
 import { PrismaService } from '../../src/documents/adapters/outbound/postgres/prisma.service';
-import { OrphanObjectCollector } from '../../src/documents/adapters/outbound/s3/orphan-objects';
+import {
+  OrphanObjectCollector,
+  OrphanSweepLoop,
+} from '../../src/documents/adapters/outbound/s3/orphan-objects';
 import type { S3Config } from '../../src/documents/adapters/outbound/s3/s3-config';
 import { S3BlobStore } from '../../src/documents/adapters/outbound/s3/s3-blob-store';
 import { S3ObjectStore } from '../../src/documents/adapters/outbound/s3/s3-object-store';
-import type { Blob } from '../../src/documents/application/ports';
+import { type Blob, BlobStore, UnitOfWork } from '../../src/documents/application/ports';
 import { describeBlobStoreContract } from '../contracts/blob-store.contract';
 
 // Same source as the Postgres contract: the environment (CI) or apps/service/.env (local).
@@ -240,5 +245,32 @@ describe('s3: the bytes in the bucket, the reference in Postgres', () => {
     await writing;
     expect(await objectKeys()).toEqual([`sha256/${hash}`]);
     expect((await blobs.get(original.key))?.content).toEqual(original.content);
+  });
+});
+
+describe('s3: wiring', () => {
+  it('BLOB_STORE=s3 resolves the S3 BlobStore and the orphan sweep through Nest and follows its lifecycle', async () => {
+    const env = {
+      BLOB_STORE: 's3',
+      S3_BUCKET: config.bucket,
+      S3_REGION: config.region,
+      S3_ENDPOINT: endpoint,
+      S3_FORCE_PATH_STYLE: 'true',
+      S3_ACCESS_KEY_ID: accessKeyId,
+      S3_SECRET_ACCESS_KEY: secretAccessKey,
+    };
+    const moduleRef = await Test.createTestingModule({
+      providers: persistenceProviders(appUrl.toString(), 'worker', env),
+    }).compile();
+    await moduleRef.init();
+    try {
+      expect(moduleRef.get(BlobStore)).toBeInstanceOf(S3BlobStore);
+      expect(moduleRef.get(OrphanSweepLoop)).toBeInstanceOf(OrphanSweepLoop);
+      const original = blob('<Invoice>wired</Invoice>');
+      await moduleRef.get(UnitOfWork).run((tx) => moduleRef.get(BlobStore).put(original, tx));
+      expect((await moduleRef.get(BlobStore).get(original.key))?.content).toEqual(original.content);
+    } finally {
+      await moduleRef.close();
+    }
   });
 });

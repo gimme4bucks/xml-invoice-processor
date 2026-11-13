@@ -142,7 +142,7 @@ const blobStoreSchema = z.object({ BLOB_STORE: z.enum(['postgres', 's3']).defaul
  * (BLOB_STORE=postgres, the default) or an S3 bucket with only the reference in the blobs table
  * (BLOB_STORE=s3, ADR 0016). With S3 the worker also deletes orphaned objects.
  */
-function persistenceProviders(
+export function persistenceProviders(
   databaseUrl: string,
   role: ProcessRole,
   env: NodeJS.ProcessEnv,
