@@ -20,6 +20,7 @@ import {
   Outbox,
   UnitOfWork,
 } from '../../src/documents/application/ports';
+import { describeBlobStoreContract } from '../contracts/blob-store.contract';
 import { describePersistenceContract } from '../contracts/persistence.contract';
 
 // Same source as prisma.config.ts: the environment (CI) or apps/service/.env (local).
@@ -83,6 +84,25 @@ describePersistenceContract('postgres', async () => {
         owner.$executeRaw`SET LOCAL session_replication_role = replica`,
         owner.$executeRawUnsafe(`TRUNCATE ${tables.map((t) => `"${schema}"."${t}"`).join(', ')}`),
       ]);
+    },
+    close: () => prisma.$disconnect(),
+  };
+});
+
+describeBlobStoreContract('postgres', async () => {
+  const prisma = new PrismaService(appUrl.toString());
+  await prisma.$connect();
+  return {
+    uow: new PrismaUnitOfWork(prisma),
+    blobs: new PrismaBlobStore(prisma),
+    corrupt: async (key) => {
+      await owner.blob.update({
+        where: { key },
+        data: { content: new Uint8Array(Buffer.from('<Invoice>tampered</Invoice>')) },
+      });
+    },
+    reset: async () => {
+      await owner.$executeRawUnsafe(`TRUNCATE "${schema}"."blobs"`);
     },
     close: () => prisma.$disconnect(),
   };

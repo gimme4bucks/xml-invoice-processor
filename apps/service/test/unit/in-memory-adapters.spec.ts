@@ -8,6 +8,7 @@ import {
   InMemoryOutbox,
   InMemoryUnitOfWork,
 } from '../../src/documents/adapters/outbound/in-memory/in-memory-persistence';
+import { describeBlobStoreContract } from '../contracts/blob-store.contract';
 import {
   type DeliveredMessageView,
   describeMessagePublisherContract,
@@ -23,6 +24,20 @@ describePersistenceContract('in-memory', async () => {
     blobs: new InMemoryBlobStore(db),
     outbox: new InMemoryOutbox(db),
     idempotency: new InMemoryIdempotencyRegistry(db),
+    reset: async () => db.reset(),
+  };
+});
+
+describeBlobStoreContract('in-memory', async () => {
+  const db = new InMemoryDatabase();
+  return {
+    uow: new InMemoryUnitOfWork(db),
+    blobs: new InMemoryBlobStore(db),
+    corrupt: async (key) => {
+      const blob = db.tables.blobs.get(key);
+      if (!blob) throw new Error(`No blob ${key} to corrupt`);
+      blob.content = Buffer.from('<Invoice>tampered</Invoice>');
+    },
     reset: async () => db.reset(),
   };
 });

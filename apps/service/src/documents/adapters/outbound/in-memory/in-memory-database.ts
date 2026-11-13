@@ -14,10 +14,15 @@ export interface OutboxRow extends OutboxMessage {
   lastError?: string;
 }
 
+/** A blob with the sha256 of its bytes, taken when it was stored. */
+export interface StoredBlob extends Blob {
+  sha256: string;
+}
+
 interface Tables {
   events: StoredEvent[];
   views: Map<string, DocumentView>;
-  blobs: Map<string, Blob>;
+  blobs: Map<string, StoredBlob>;
   outbox: OutboxRow[];
   idempotency: IdempotencyRecord[];
 }

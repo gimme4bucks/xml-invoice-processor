@@ -1,6 +1,6 @@
 # 0011. Document storage in PostgreSQL behind a BlobStore port
 
-Status: Accepted (2026-11-12)
+Status: Accepted (2026-11-12). Still the default; [ADR 0016](0016-documents-in-s3.md) adds S3 behind the same port (`BLOB_STORE=s3`) and carries out the follow-up below.
 
 ## Context
 
