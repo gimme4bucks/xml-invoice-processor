@@ -9,6 +9,8 @@ export default defineConfig({
   build: {
     // No inline scripts or styles: the CSP allows only files from the app's own origin.
     assetsInlineLimit: 0,
+    // The licences of the bundled dependencies (React, MIT) ship with the bundle.
+    license: { fileName: 'third-party-licenses.md' },
   },
   test: {
     environment: 'jsdom',
