@@ -34,11 +34,17 @@ import { postgresProviders } from '../documents/adapters/outbound/postgres/postg
 import { loadRabbitMqConfig } from '../documents/adapters/outbound/rabbitmq/rabbitmq-config';
 import { rabbitMqProviders } from '../documents/adapters/outbound/rabbitmq/rabbitmq-providers';
 import { RandomIdGenerator, SystemClock } from '../documents/adapters/outbound/system/system';
-import { validationProviders } from '../documents/adapters/outbound/validation/validation-providers';
+import {
+  schematronTimeoutMs,
+  validationProviders,
+} from '../documents/adapters/outbound/validation/validation-providers';
 import { InMemoryDocumentConsumer } from '../documents/adapters/inbound/messaging/in-memory-consumer';
 import { ProcessMessageDispatcher } from '../documents/adapters/inbound/messaging/process-message-dispatcher';
 import { messagingConsumers } from '../documents/adapters/inbound/messaging/rabbitmq-document-consumer';
-import type { SweeperSettings } from '../documents/adapters/inbound/scheduling/sweeper-settings';
+import {
+  loadSweeperSettings,
+  type SweeperSettings,
+} from '../documents/adapters/inbound/scheduling/sweeper-settings';
 import type { AppConfig } from '../shared/config';
 
 /**
@@ -124,10 +130,16 @@ export function consumerProviders(config: AppConfig): Provider[] {
     : messagingConsumers;
 }
 
-/** The worker's sweeper settings (SWEEPER_*), checked against the retry and Schematron limits. */
+/**
+ * The worker's sweeper settings (SWEEPER_*). With the real adapters, a document may legitimately
+ * stay unchanged for the longest retry delay plus the Schematron timeout, so the threshold must be
+ * longer; a lower one is a startup error.
+ */
 export function sweeperSettings(
-  _config: AppConfig,
-  _env: NodeJS.ProcessEnv = process.env,
+  config: AppConfig,
+  env: NodeJS.ProcessEnv = process.env,
 ): SweeperSettings {
-  throw new Error('sweeperSettings is not implemented yet');
+  if (config.ADAPTERS === 'in-memory') return loadSweeperSettings(env);
+  const longestRetryDelayMs = Math.max(...loadRabbitMqConfig(env).retryDelaysMs);
+  return loadSweeperSettings(env, longestRetryDelayMs + schematronTimeoutMs(env));
 }

@@ -18,6 +18,7 @@ import { loadSweeperSettings } from '../../src/documents/adapters/inbound/schedu
 import {
   SubmitDocumentCommand,
   SubmitDocumentHandler,
+  type SubmitDocumentResult,
 } from '../../src/documents/application/commands/submit-document';
 import { DocumentViews, EventStore } from '../../src/documents/application/ports';
 import { loadConfig } from '../../src/shared/config';
@@ -108,7 +109,7 @@ describe('sweeper in the worker (in-memory adapters)', () => {
     // Every delivery fails until the in-memory broker's delivery limit dead-letters the message.
     const crash = vi.spyOn(adapters.rules, 'validate').mockRejectedValue(new Error('crashed'));
     const fixture = readFileSync(join(__dirname, '../fixtures/invoice-minimal.xml'));
-    const { documentId } = await worker.get(CommandBus).execute(
+    const { documentId }: SubmitDocumentResult = await worker.get(CommandBus).execute(
       new SubmitDocumentCommand({
         organisationId: 'org-supplier',
         peppolId: '0106:11111111',
