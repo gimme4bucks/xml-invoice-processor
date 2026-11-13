@@ -24,7 +24,7 @@ interface RawResponse {
   body: string;
   /** Only for HTTPS: whether the certificate chain was verified, and who issued the server's. */
   authorized?: boolean;
-  issuer?: string;
+  issuer?: string | string[];
 }
 
 /** A plain GET with node:http(s), so the test controls the trusted CAs and sees redirects as-is. */
