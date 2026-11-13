@@ -37,6 +37,7 @@ export class UblInvoiceMapper extends InvoiceMapper {
       if (doc.dtd) throw new Error('A DOCTYPE declaration is not allowed'); // intake rejects these
       const invoice = doc.root;
       return {
+        documentType: 'Invoice',
         invoiceNumber: text(invoice, 'cbc:ID') ?? '',
         issueDate: text(invoice, 'cbc:IssueDate') ?? '',
         dueDate: text(invoice, 'cbc:DueDate'),

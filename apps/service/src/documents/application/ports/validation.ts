@@ -1,5 +1,5 @@
 import type { RuleViolation } from '../../domain/document-events';
-import type { CanonicalInvoice } from '../../domain/invoice';
+import type { CanonicalDocument } from '../../domain/invoice';
 import type { DocumentType } from '../../domain/value-objects';
 
 export interface StructureError {
@@ -14,7 +14,9 @@ export type StructureValidation =
       valid: false;
       /**
        * not-well-formed: not parseable XML. doctype-forbidden: contains a DOCTYPE (XXE guard).
-       * unsupported-document-type: e.g. a UBL CreditNote (not supported yet).
+       * unsupported-document-type: a known document type we do not accept. Not used since
+       * credit notes are accepted (ADR 0015); kept because it is part of the public API.
+       * Any other root element is schema-invalid.
        * schema-invalid: fails the UBL 2.1 XSD.
        */
       reason:
@@ -30,9 +32,12 @@ export abstract class StructureValidator {
   abstract validate(xml: Buffer): StructureValidation;
 }
 
-/** Translates a structurally valid UBL invoice into our canonical model (anti-corruption layer). */
+/**
+ * Translates a structurally valid UBL invoice or credit note into our canonical model
+ * (anti-corruption layer).
+ */
 export abstract class InvoiceMapper {
-  abstract map(xml: Buffer): CanonicalInvoice;
+  abstract map(xml: Buffer): CanonicalDocument;
 }
 
 /**

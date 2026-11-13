@@ -1,5 +1,5 @@
 import type { RuleViolation } from '../../../domain/document-events';
-import type { CanonicalInvoice } from '../../../domain/invoice';
+import type { CanonicalDocument } from '../../../domain/invoice';
 import { PeppolParticipantId } from '../../../domain/value-objects';
 import {
   BusinessRuleValidator,
@@ -13,7 +13,7 @@ import {
 // Stand-ins for the walking skeleton and unit tests only. The real adapters (libxml2-wasm XSD,
 // SaxonJS Schematron, UBL mapper, VIES fake for demos) are built in work package G02.
 
-/** Checks only the DOCTYPE ban and the root element; no XSD. */
+/** Checks only the DOCTYPE ban and the root element (Invoice or CreditNote); no XSD. */
 export class StubStructureValidator extends StructureValidator {
   validate(xml: Buffer): StructureValidation {
     const text = xml.toString('utf8');
@@ -24,27 +24,23 @@ export class StubStructureValidator extends StructureValidator {
         errors: [{ message: 'DOCTYPE is not allowed' }],
       };
     }
-    if (/<(\w+:)?CreditNote[\s>]/.test(text)) {
-      return {
-        valid: false,
-        reason: 'unsupported-document-type',
-        errors: [{ message: 'CreditNote documents are not supported yet' }],
-      };
-    }
+    if (isCreditNote(text)) return { valid: true, documentType: 'CreditNote' };
     if (!/<(\w+:)?Invoice[\s>]/.test(text)) {
       return {
         valid: false,
         reason: 'schema-invalid',
-        errors: [{ message: 'Root element must be Invoice' }],
+        errors: [{ message: 'Root element must be Invoice or CreditNote' }],
       };
     }
     return { valid: true, documentType: 'Invoice' };
   }
 }
 
-/** Extracts just enough of a UBL invoice with regular expressions to drive the skeleton. */
+const isCreditNote = (text: string): boolean => /<(\w+:)?CreditNote[\s>]/.test(text);
+
+/** Extracts just enough of a UBL invoice or credit note with regular expressions to drive the skeleton. */
 export class StubInvoiceMapper extends InvoiceMapper {
-  map(xml: Buffer): CanonicalInvoice {
+  map(xml: Buffer): CanonicalDocument {
     const text = xml.toString('utf8');
     const endpoints = [...text.matchAll(/<cbc:EndpointID schemeID="(\d{4})">([^<]+)</g)];
     const vats = [...text.matchAll(/<cac:PartyTaxScheme>\s*<cbc:CompanyID>([^<]+)</g)];
@@ -57,8 +53,11 @@ export class StubInvoiceMapper extends InvoiceMapper {
         ...(vats[i]?.[1] ? { vatNumber: vats[i][1] } : {}),
       };
     };
+    const number = pick(/<cbc:ID>([^<]+)</);
     return {
-      invoiceNumber: pick(/<cbc:ID>([^<]+)</),
+      ...(isCreditNote(text)
+        ? { documentType: 'CreditNote', creditNoteNumber: number }
+        : { documentType: 'Invoice', invoiceNumber: number }),
       issueDate: pick(/<cbc:IssueDate>([^<]+)</),
       currency: pick(/<cbc:DocumentCurrencyCode>([^<]+)</),
       supplier: party(0),

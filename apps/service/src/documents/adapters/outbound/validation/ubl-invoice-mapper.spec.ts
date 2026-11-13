@@ -21,6 +21,7 @@ describe('UblInvoiceMapper', () => {
       supplier: { ...invoice.supplier, endpointId: invoice.supplier.endpointId.toString() },
       customer: { ...invoice.customer, endpointId: invoice.customer.endpointId.toString() },
     }).toEqual({
+      documentType: 'Invoice',
       invoiceNumber: 'INV-2026-0101',
       issueDate: '2026-11-02',
       dueDate: '2026-12-02',

@@ -19,6 +19,7 @@ import { ApiModule, type ApiOptions } from '../../src/app/modules';
 import type { AuthOptions } from '../../src/shared/auth/auth-options';
 import { MAX_DOCUMENT_BYTES } from '../../src/documents/adapters/inbound/http/xml-body';
 import { configureHttpApp, httpAppOptions } from '../../src/shared/http/http-app';
+import { peppolFixture } from '../fixtures/peppol';
 
 /**
  * The HTTP API through supertest: ApiModule with the in-memory adapters, the real guards, filter,
@@ -309,10 +310,14 @@ describe('HTTP API', () => {
       });
     });
 
-    it('422 DOCUMENT_REJECTED for a CreditNote (not supported yet)', async () => {
-      const res = await submit('<CreditNote xmlns="urn:x"></CreditNote>');
-      expect(res.status).toBe(422);
-      expect(res.body.reason).toBe('unsupported-document-type');
+    it('accepts a credit note with 202; its documentType is CreditNote', async () => {
+      const res = await submit(peppolFixture('credit-note'));
+      expect(res.status).toBe(202);
+
+      const status = await http()
+        .get(res.headers.location!)
+        .set('Authorization', `Bearer ${await token()}`);
+      expect(status.body).toMatchObject({ documentType: 'CreditNote', direction: 'sales' });
     });
 
     it('422 NOT_A_PARTY when the token organisation is neither supplier nor customer', async () => {
