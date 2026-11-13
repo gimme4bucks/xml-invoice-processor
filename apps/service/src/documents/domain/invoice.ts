@@ -24,13 +24,24 @@ export interface CanonicalCreditNote extends CanonicalDocumentFields {
 }
 
 interface CanonicalDocumentFields {
+  /** BT-3, e.g. 380 (commercial invoice) or 381 (credit note). */
+  typeCode: string;
   issueDate: string;
   dueDate?: string;
   currency: string;
+  /** BG-3: the invoices this document corrects or credits; empty when it names none. */
+  precedingInvoices: PrecedingInvoice[];
   supplier: InvoiceParty;
   customer: InvoiceParty;
   lines: InvoiceLine[];
   totals: InvoiceTotals;
+}
+
+export interface PrecedingInvoice {
+  /** BT-25. */
+  invoiceNumber: string;
+  /** BT-26. */
+  issueDate?: string;
 }
 
 export interface InvoiceParty {

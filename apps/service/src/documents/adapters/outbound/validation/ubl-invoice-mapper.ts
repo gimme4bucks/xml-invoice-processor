@@ -1,21 +1,47 @@
-import type { XmlDocument, XmlNode } from 'libxml2-wasm';
+import type { XmlNode } from 'libxml2-wasm';
 import { DomainError } from '../../../domain/errors';
 import type {
-  CanonicalInvoice,
+  CanonicalDocument,
   InvoiceLine,
   InvoiceParty,
   InvoiceTotals,
+  PrecedingInvoice,
 } from '../../../domain/invoice';
-import { PeppolParticipantId } from '../../../domain/value-objects';
+import { type DocumentType, PeppolParticipantId } from '../../../domain/value-objects';
 import { InvoiceMapper } from '../../../application/ports';
 import { type Libxml2, loadLibxml2, safeParseOptions } from './libxml2';
 import { UBL_NAMESPACES } from './ubl';
 
-const NS = { ubl: UBL_NAMESPACES.ubl, cac: UBL_NAMESPACES.cac, cbc: UBL_NAMESPACES.cbc };
+const NS = {
+  ubl: UBL_NAMESPACES.ubl,
+  cn: UBL_NAMESPACES.cn,
+  cac: UBL_NAMESPACES.cac,
+  cbc: UBL_NAMESPACES.cbc,
+};
+
+/** Where UBL puts the EN 16931 fields that are named differently in a credit note (ADR 0015). */
+const SYNTAX: Record<
+  DocumentType,
+  { namespace: string; typeCode: string; line: string; quantity: string }
+> = {
+  Invoice: {
+    namespace: UBL_NAMESPACES.ubl,
+    typeCode: 'cbc:InvoiceTypeCode',
+    line: 'cac:InvoiceLine',
+    quantity: 'cbc:InvoicedQuantity',
+  },
+  CreditNote: {
+    namespace: UBL_NAMESPACES.cn,
+    typeCode: 'cbc:CreditNoteTypeCode',
+    line: 'cac:CreditNoteLine',
+    quantity: 'cbc:CreditedQuantity',
+  },
+};
 
 /**
- * Anti-corruption layer from Peppol BIS 3.0 UBL to our CanonicalInvoice, using libxml2 XPath.
- * Amounts and quantities are copied as the decimal strings they are in the XML.
+ * Anti-corruption layer from Peppol BIS 3.0 UBL (Invoice or CreditNote) to our canonical model,
+ * using libxml2 XPath. Amounts and quantities are copied as the decimal strings they are in the
+ * XML.
  *
  * It runs at intake (only the endpoint IDs matter there, to derive purchase or sales) and in the
  * worker after the Schematron rules passed. So only a missing or malformed EndpointID throws;
@@ -31,21 +57,33 @@ export class UblInvoiceMapper extends InvoiceMapper {
     return new UblInvoiceMapper(await loadLibxml2());
   }
 
-  map(xml: Buffer): CanonicalInvoice {
+  map(xml: Buffer): CanonicalDocument {
     const doc = this.libxml.XmlDocument.fromBuffer(xml, { option: safeParseOptions(this.libxml) });
     try {
       if (doc.dtd) throw new Error('A DOCTYPE declaration is not allowed'); // intake rejects these
-      const invoice = doc.root;
+      const root = doc.root;
+      const documentType = (Object.keys(SYNTAX) as DocumentType[]).find(
+        (type) => root.name === type && root.namespaceUri === SYNTAX[type].namespace,
+      );
+      // Intake only accepts these two roots, so this is a programming error, not a client one.
+      if (!documentType) throw new Error(`Not a UBL Invoice or CreditNote: ${root.name}`);
+      const syntax = SYNTAX[documentType];
+      const number = text(root, 'cbc:ID') ?? '';
       return {
-        documentType: 'Invoice',
-        invoiceNumber: text(invoice, 'cbc:ID') ?? '',
-        issueDate: text(invoice, 'cbc:IssueDate') ?? '',
-        dueDate: text(invoice, 'cbc:DueDate'),
-        currency: text(invoice, 'cbc:DocumentCurrencyCode') ?? '',
-        supplier: party(doc, 'cac:AccountingSupplierParty', 'supplier'),
-        customer: party(doc, 'cac:AccountingCustomerParty', 'customer'),
-        lines: invoice.find('cac:InvoiceLine', NS).map(line),
-        totals: totals(invoice),
+        ...(documentType === 'CreditNote'
+          ? { documentType, creditNoteNumber: number }
+          : { documentType, invoiceNumber: number }),
+        typeCode: text(root, syntax.typeCode) ?? '',
+        issueDate: text(root, 'cbc:IssueDate') ?? '',
+        dueDate: text(root, 'cbc:DueDate'),
+        currency: text(root, 'cbc:DocumentCurrencyCode') ?? '',
+        precedingInvoices: root
+          .find('cac:BillingReference/cac:InvoiceDocumentReference', NS)
+          .map(precedingInvoice),
+        supplier: party(root, 'cac:AccountingSupplierParty', 'supplier'),
+        customer: party(root, 'cac:AccountingCustomerParty', 'customer'),
+        lines: root.find(syntax.line, NS).map((node) => line(node, syntax.quantity)),
+        totals: totals(root),
       };
     } finally {
       doc.dispose(); // WASM memory is not garbage-collected
@@ -53,8 +91,8 @@ export class UblInvoiceMapper extends InvoiceMapper {
   }
 }
 
-function party(doc: XmlDocument, element: string, role: string): InvoiceParty {
-  const node = doc.get(`/ubl:Invoice/${element}/cac:Party`, NS);
+function party(root: XmlNode, element: string, role: string): InvoiceParty {
+  const node = root.get(`${element}/cac:Party`, NS);
   const endpoint = node?.get('cbc:EndpointID', NS);
   const value = endpoint?.content.trim();
   const scheme = endpoint?.get('@schemeID')?.content.trim();
@@ -74,30 +112,32 @@ function party(doc: XmlDocument, element: string, role: string): InvoiceParty {
   };
 }
 
-function line(node: XmlNode): InvoiceLine {
+/** BG-3: BT-25 (the preceding invoice's number) and BT-26 (its issue date). */
+function precedingInvoice(node: XmlNode): PrecedingInvoice {
+  return { invoiceNumber: text(node, 'cbc:ID') ?? '', issueDate: text(node, 'cbc:IssueDate') };
+}
+
+function line(node: XmlNode, quantity: string): InvoiceLine {
   return {
     id: text(node, 'cbc:ID') ?? '',
     description: text(node, 'cac:Item/cbc:Name') ?? text(node, 'cac:Item/cbc:Description'),
-    quantity: text(node, 'cbc:InvoicedQuantity') ?? '',
-    unitCode: text(node, 'cbc:InvoicedQuantity/@unitCode'),
+    quantity: text(node, quantity) ?? '',
+    unitCode: text(node, `${quantity}/@unitCode`),
     netAmount: text(node, 'cbc:LineExtensionAmount') ?? '',
     vatCategory: text(node, 'cac:Item/cac:ClassifiedTaxCategory/cbc:ID'),
     vatPercent: text(node, 'cac:Item/cac:ClassifiedTaxCategory/cbc:Percent'),
   };
 }
 
-function totals(invoice: XmlNode): InvoiceTotals {
-  const amount = (name: string) => text(invoice, `cac:LegalMonetaryTotal/cbc:${name}`) ?? '';
+function totals(root: XmlNode): InvoiceTotals {
+  const amount = (name: string) => text(root, `cac:LegalMonetaryTotal/cbc:${name}`) ?? '';
   return {
     lineExtensionAmount: amount('LineExtensionAmount'),
     taxExclusiveAmount: amount('TaxExclusiveAmount'),
     // A second TaxTotal may state the VAT in the accounting currency (BT-111); we want BT-110.
     taxAmount:
-      text(
-        invoice,
-        'cac:TaxTotal/cbc:TaxAmount[@currencyID = /ubl:Invoice/cbc:DocumentCurrencyCode]',
-      ) ??
-      text(invoice, 'cac:TaxTotal/cbc:TaxAmount') ??
+      text(root, 'cac:TaxTotal/cbc:TaxAmount[@currencyID = ../../cbc:DocumentCurrencyCode]') ??
+      text(root, 'cac:TaxTotal/cbc:TaxAmount') ??
       '',
     taxInclusiveAmount: amount('TaxInclusiveAmount'),
     payableAmount: amount('PayableAmount'),

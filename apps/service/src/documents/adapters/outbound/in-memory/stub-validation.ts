@@ -58,8 +58,10 @@ export class StubInvoiceMapper extends InvoiceMapper {
       ...(isCreditNote(text)
         ? { documentType: 'CreditNote', creditNoteNumber: number }
         : { documentType: 'Invoice', invoiceNumber: number }),
+      typeCode: pick(/TypeCode>([^<]+)</),
       issueDate: pick(/<cbc:IssueDate>([^<]+)</),
       currency: pick(/<cbc:DocumentCurrencyCode>([^<]+)</),
+      precedingInvoices: [],
       supplier: party(0),
       customer: party(1),
       lines: [],
