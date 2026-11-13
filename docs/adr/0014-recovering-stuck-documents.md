@@ -76,6 +76,12 @@ The guarantee is that an accepted document is processed. One known gap remained:
 - Unit (in-memory adapters, deterministic fault injection): the aggregate's attempt choice and the refusal of final documents (`document.spec.ts`); one unit of work, rollback, one winner, stale versions and dry runs (`requeue-document.spec.ts`); the sweeper with a fake clock, skipping recent changes and pending outbox rows, two concurrent sweepers (`sweeper.spec.ts`); the re-drive acking only after the commit, leaving malformed, unknown and failing messages, `--limit` and the start depth (`dlq-redrive.spec.ts`); the worker's log lines (`worker-logging.spec.ts`); the sweeper wired into the worker (`sweeper-loop.spec.ts`).
 - Contract: `DocumentViews.findStuck` against the in-memory and the Postgres adapters; the RabbitMQ dead-letter source, including a message released 25 times that is still there.
 - Probe on RabbitMQ 4.4.0 (quorum queue, no explicit limit, 25 returns): `reject` → gone after 20 returns; channel close → gone after 20; `nack` → still there. Replacing `nack` by `reject` makes the contract test fail.
+- Chaos (`pnpm test:chaos`, G10), against the full compose stack over HTTPS (`apps/service/test/chaos`). Every document ends with gapless versions, one `ProcessingStarted` per attempt and exactly one terminal event:
+  - PostgreSQL paused until three in-flight documents are dead-lettered (about four minutes with the default back-off and delivery limit), then `redrive --dry-run` (lists them, changes nothing) and `redrive` (exit 0, DLQ empty): all three `Completed`, with one `ProcessingRequeued` (`dlq-redrive`). Without the redrive step, the sweeper recovers them instead, and the test fails on the reason.
+  - A message purged from `documents.process` while the worker was down: the sweeper alone requeues the attempt in progress (`sweeper`, attempt 1) and the document completes.
+  - A poison message published straight to the DLQ: both runs exit 1, report it as malformed, and leave it in the DLQ.
+  - The worker killed with SIGKILL mid-attempt: the redelivered message resumes the attempt without a second `ProcessingStarted`. RabbitMQ killed during a burst of 20 documents: all complete once, and no unpublished outbox rows are left.
+  - For each scenario, a variant without the recovery step (or with a valid message instead of the poison) fails on its assertion. The suite takes about seven minutes, most of it waiting for the dead-lettering and the sweep.
 
 ## Follow-ups
 
