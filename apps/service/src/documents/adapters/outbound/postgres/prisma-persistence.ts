@@ -163,7 +163,6 @@ export class PrismaDocumentViews extends DocumentViews {
     return row ? toView(row) : undefined;
   }
 
-  /** Keyset pagination on (received_at DESC, document_id DESC): stable while new rows arrive. */
   async list(
     organisationId: string,
     options: {
@@ -173,11 +172,32 @@ export class PrismaDocumentViews extends DocumentViews {
       documentType?: DocumentType;
     },
   ): Promise<DocumentPage> {
+    return this.page({ ...options, organisationId });
+  }
+
+  async listAcrossOrganisations(options: {
+    limit: number;
+    cursor?: string;
+    organisationId?: string;
+    status?: DocumentStatus;
+    documentType?: DocumentType;
+  }): Promise<DocumentPage> {
+    return this.page(options);
+  }
+
+  /** Keyset pagination on (received_at DESC, document_id DESC): stable while new rows arrive. */
+  private async page(options: {
+    limit: number;
+    cursor?: string;
+    organisationId?: string;
+    status?: DocumentStatus;
+    documentType?: DocumentType;
+  }): Promise<DocumentPage> {
     const after = options.cursor ? decodeCursor(options.cursor) : undefined;
     const rows = await guardUnavailable(() =>
       this.prisma.documentView.findMany({
         where: {
-          organisationId,
+          ...(options.organisationId ? { organisationId: options.organisationId } : {}),
           ...(options.status ? { status: options.status } : {}),
           ...(options.documentType ? { documentType: options.documentType } : {}),
           ...(after

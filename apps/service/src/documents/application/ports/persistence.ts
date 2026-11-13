@@ -115,6 +115,18 @@ export abstract class DocumentViews {
     },
   ): Promise<DocumentPage>;
   /**
+   * **Support only (ADR 0017), across all organisations.** Like `list`, newest first, but not
+   * scoped to the caller's organisation: `organisationId` is an optional filter here. Never call
+   * it for an organisation's own request; that is what `list` is for.
+   */
+  abstract listAcrossOrganisations(options: {
+    limit: number;
+    cursor?: string;
+    organisationId?: string;
+    status?: DocumentStatus;
+    documentType?: DocumentType;
+  }): Promise<DocumentPage>;
+  /**
    * For the sweeper, across all organisations: documents that are not final, whose read model
    * has not changed since before `updatedBefore`, and that have no unpublished outbox message
    * (one waiting for the relay is not stuck). Least recently changed first.
