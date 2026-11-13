@@ -88,4 +88,4 @@ The guarantee is that an accepted document is processed. One known gap remained:
 - Alerts on the sweeper's warnings and on the depth of `documents.dlq`.
 - A cap on sweeper requeues per document, after which it fails with a stable code (ends the slow poison loop).
 - A `delivery-limit` policy on `documents.dlq` that lifts the default of 20.
-- Chaos tests (G10) that prove the recovery end to end: a long PostgreSQL outage, then the sweeper and `xip redrive`.
+- Chaos tests that prove the recovery end to end: done in G10, see Evidence.

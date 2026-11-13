@@ -23,13 +23,33 @@ All notable changes to this project. The format follows
   - They are mapped into the canonical model, with the credited invoice as the preceding invoice reference.
   - `documentType` is `Invoice` or `CreditNote`, and `GET /documents?type=` filters on it.
   - The demo follows a credit note to `Completed`.
+- **Documents in S3** ([ADR 0016](docs/adr/0016-documents-in-s3.md)):
+  - `BLOB_STORE=postgres|s3`; the full compose stack uses S3, on a local Versity S3 Gateway.
+  - Each object is uploaded under its sha256 before the transaction that references it commits, and every read checks the sha256.
+  - An orphan collector in every worker removes objects that no transaction referenced, kept apart from uploads by advisory locks.
+  - An object store outage answers 503 with `Retry-After`, like a database outage.
+- **Support access** ([ADR 0017](docs/adr/0017-support-access-with-pkce.md)):
+  - The mock IdP signs support staff in with Authorization Code + PKCE (public client `support-web`, S256 only).
+  - With scope `support:read`, `GET /support/documents`, `/{id}` and `/{id}/history` read across organisations. They never return the XML or the result.
+  - Every support request writes an audit line.
+  - Support tokens are rate-limited per user.
+  - CORS is off unless `CORS_ORIGINS` names the frontend's origin.
+- **Chaos tests** (`pnpm test:chaos`, a separate CI job): five hard failure scenarios against the full stack over HTTPS. Each proves that no document is lost or processed twice:
+  - a long Postgres outage, then `xip redrive`;
+  - a lost message, recovered by the sweeper;
+  - a killed worker;
+  - a poison message;
+  - a RabbitMQ kill during a burst.
 - **Worker logs:** one JSON line per handled message, with IDs, attempt, outcome, duration and correlation id.
 - **Test-driven development** (red, green, refactor) is a hard rule for every work package (`CLAUDE.md`).
 
 ### Changed
 
+- **Organisation endpoints:** a token without `org_id` gets 403 `ORGANISATION_TOKEN_REQUIRED`. A token with neither `org_id` nor `peppol_id` used to get 401.
+- **Blobs:** `blobs.content` is nullable, because with S3 the row holds only the reference (migration `20261113120000_blob_references`). The Postgres blob store now also checks the sha256 on read.
+
 - **Ports:** the full compose stack publishes only the edge's HTTPS ports. The API and the mock IdP no longer listen on host ports 3000 and 4000.
-- **Dependencies:** NestJS 12.4.2, Vite 8.3.7, jose 6.2.17 and typescript-eslint 8.72.2.
+- **Dependencies:** NestJS 12.4.2, Vite 8.3.7, jose 6.2.17 and typescript-eslint 8.72.2; `@aws-sdk/client-s3` 3.1165.0 is new.
 
 ## [1.0.0] - 2026-11-12
 
