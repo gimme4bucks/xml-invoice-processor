@@ -55,6 +55,7 @@ const actions = {
   complete: (document: Document) => document.complete('documents/d-1/result.json', now),
   fail: (document: Document) => document.fail(rejected, now),
   recordTransientFailure: (document: Document) => document.recordTransientFailure(outage, now),
+  requeue: (document: Document) => document.requeue('sweeper', now),
 };
 type Action = keyof typeof actions;
 
@@ -75,22 +76,27 @@ describe('Document state machine', () => {
     ['Received', 'complete', 'NO_ATTEMPT_IN_PROGRESS'],
     ['Received', 'fail', 'NO_ATTEMPT_IN_PROGRESS'],
     ['Received', 'recordTransientFailure', 'NO_ATTEMPT_IN_PROGRESS'],
+    ['Received', 'requeue', 'ProcessingRequeued'],
     ['Processing (attempt running)', 'startProcessing', 'ATTEMPT_IN_PROGRESS'],
     ['Processing (attempt running)', 'complete', 'DocumentProcessed'],
     ['Processing (attempt running)', 'fail', 'DocumentProcessingFailed'],
     ['Processing (attempt running)', 'recordTransientFailure', 'ProcessingAttemptFailed'],
+    ['Processing (attempt running)', 'requeue', 'ProcessingRequeued'],
     ['Processing (attempt failed)', 'startProcessing', 'ProcessingStarted'],
     ['Processing (attempt failed)', 'complete', 'NO_ATTEMPT_IN_PROGRESS'],
     ['Processing (attempt failed)', 'fail', 'NO_ATTEMPT_IN_PROGRESS'],
     ['Processing (attempt failed)', 'recordTransientFailure', 'NO_ATTEMPT_IN_PROGRESS'],
+    ['Processing (attempt failed)', 'requeue', 'ProcessingRequeued'],
     ['Completed', 'startProcessing', 'DOCUMENT_FINAL'],
     ['Completed', 'complete', 'DOCUMENT_FINAL'],
     ['Completed', 'fail', 'DOCUMENT_FINAL'],
     ['Completed', 'recordTransientFailure', 'DOCUMENT_FINAL'],
+    ['Completed', 'requeue', 'DOCUMENT_FINAL'],
     ['Failed', 'startProcessing', 'DOCUMENT_FINAL'],
     ['Failed', 'complete', 'DOCUMENT_FINAL'],
     ['Failed', 'fail', 'DOCUMENT_FINAL'],
     ['Failed', 'recordTransientFailure', 'DOCUMENT_FINAL'],
+    ['Failed', 'requeue', 'DOCUMENT_FINAL'],
   ];
 
   it.each(matrix)('%s + %s → %s', (state, action, expected) => {
@@ -209,6 +215,49 @@ describe('Document state machine', () => {
       const document = states['Processing (attempt running)']();
       expect(document.recordTransientFailure(outage, now, 1)).toBe('exhausted');
       expect(document.status).toBe('Failed');
+    });
+  });
+
+  describe('requeue (DLQ re-drive, sweeper)', () => {
+    it.each<[State, number]>([
+      ['Received', 1],
+      ['Processing (attempt running)', 1],
+      ['Processing (attempt failed)', 2],
+    ])('%s: asks for attempt %i', (state, attempt) => {
+      const document = states[state]();
+      expect(document.requeue('dlq-redrive', now)).toBe(attempt);
+      expect(document.pendingEvents.at(-1)).toEqual({
+        type: 'ProcessingRequeued',
+        attempt,
+        reason: 'dlq-redrive',
+        requeuedAt: now.toISOString(),
+      });
+    });
+
+    it('only records the requeue: status, attempt and failure stay as they were', () => {
+      const document = states['Processing (attempt failed)']();
+      document.requeue('sweeper', now);
+      expect(document).toMatchObject({
+        status: 'Processing',
+        attempts: 1,
+        attemptInProgress: false,
+        failure: outage,
+      });
+      // The requeued message then starts the attempt the requeue asked for.
+      document.startProcessing(now);
+      expect(document.attempts).toBe(2);
+    });
+
+    it('a rehydrated requeue leaves the state as it was', () => {
+      const document = states['Processing (attempt running)']();
+      document.requeue('sweeper', now);
+      const rehydrated = Document.fromHistory(document.pendingEvents);
+      expect(rehydrated).toMatchObject({
+        status: 'Processing',
+        attempts: 1,
+        attemptInProgress: true,
+      });
+      expect(rehydrated.version).toBe(3);
     });
   });
 
