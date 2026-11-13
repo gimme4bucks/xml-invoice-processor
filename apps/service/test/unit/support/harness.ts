@@ -15,6 +15,11 @@ import {
   type ProcessOutcome,
 } from '../../../src/documents/application/commands/process-document';
 import {
+  RequeueDocumentCommand,
+  RequeueDocumentHandler,
+  type RequeueResult,
+} from '../../../src/documents/application/commands/requeue-document';
+import {
   SubmitDocumentCommand,
   SubmitDocumentHandler,
   type SubmitDocumentResult,
@@ -116,9 +121,23 @@ export function createHarness() {
     ports.ids,
   );
 
+  const requeueHandler = new RequeueDocumentHandler(
+    ports.uow,
+    ports.events,
+    ports.views,
+    ports.outbox,
+    ports.clock,
+    ports.ids,
+  );
+
   return {
     ...ports,
     db,
+    requeueHandler,
+    /** Sends a stuck document to the worker again, as the DLQ re-drive or the sweeper does. */
+    requeue(input: RequeueDocumentCommand['input']): Promise<RequeueResult> {
+      return requeueHandler.execute(new RequeueDocumentCommand(input));
+    },
     submit(
       options: { org?: Organisation; key?: string; xml?: Buffer } = {},
     ): Promise<SubmitDocumentResult> {
