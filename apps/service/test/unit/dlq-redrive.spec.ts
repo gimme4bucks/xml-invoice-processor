@@ -117,9 +117,10 @@ describe('DLQ re-drive (in-memory adapters, fake DLQ)', () => {
     ]);
     expect(await h.deliver(requeued[0]!)).toBe('completed');
     // The dead-lettered message is recorded as the cause of the requeue.
-    expect((await h.events.load(a.documentId)).at(-2)?.metadata.causationId).toBe(
-      a.letter.messageId,
+    const requeue = (await h.events.load(a.documentId)).find(
+      (stored) => stored.event.type === 'ProcessingRequeued',
     );
+    expect(requeue?.metadata.causationId).toBe(a.letter.messageId);
   });
 
   it('leaves the message in the DLQ when the requeue fails (the database is down)', async () => {
