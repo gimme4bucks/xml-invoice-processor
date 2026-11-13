@@ -6,14 +6,17 @@ Needs Docker (with Compose v2), Node 22 and pnpm (Corepack).
 
 ```bash
 pnpm install
-docker compose --profile full up -d --build --wait   # Postgres, RabbitMQ, migrations, API, worker, mock IdP
+docker compose --profile full up -d --build --wait   # Postgres, RabbitMQ, migrations, API, worker, mock IdP, HTTPS edge
 pnpm demo                                            # the scenarios below, against the running stack
 pnpm e2e                                             # end-to-end tests, including RabbitMQ and Postgres outages
 docker compose --profile full down --volumes         # stop and remove the data
 ```
 
-- The API listens on <http://localhost:3000> (OpenAPI and Swagger UI at
-  <http://localhost:3000/docs>); the mock IdP on <http://localhost:4000>.
+- The API is reachable on <https://localhost:3443> (OpenAPI and Swagger UI at
+  <https://localhost:3443/docs>) and the mock IdP on <https://localhost:4443>, both through the
+  HTTPS edge (Caddy, [ADR 0013](../docs/adr/0013-tls-at-the-edge.md)). Plain HTTP is refused.
+- `pnpm demo` and `pnpm e2e` trust the edge's root certificate by themselves; `pnpm tls:ca`
+  exports it to `.tls/edge-root-ca.crt` for other clients, such as curl below.
 - Compose reads an optional `.env` in the repository root (copy `.env.example`) for its settings.
 - `pnpm e2e` stops RabbitMQ (`docker kill`) and freezes Postgres (`docker pause`) for a moment and
   brings them back itself.
@@ -56,11 +59,16 @@ to submit it again. `pnpm demo` does that for you on every run.
 
 ## By hand with curl
 
-```bash
-TOKEN=$(curl -s -u supplier-client:change-me -d grant_type=client_credentials \
-  http://localhost:4000/token | jq -r .access_token)
+From the repository root, with the stack running. `--cacert` makes curl verify the edge's
+certificate against its exported root; never use `-k`, which turns verification off.
 
-curl -i http://localhost:3000/documents \
+```bash
+CA=$(pnpm -s tls:ca)   # .tls/edge-root-ca.crt, exported from the running edge
+
+TOKEN=$(curl -s --cacert "$CA" -u supplier-client:change-me -d grant_type=client_credentials \
+  https://localhost:4443/token | jq -r .access_token)
+
+curl -i --cacert "$CA" https://localhost:3443/documents \
   -H "Authorization: Bearer $TOKEN" \
   -H "Idempotency-Key: $(uuidgen)" \
   -H 'Content-Type: application/xml' \
@@ -68,10 +76,10 @@ curl -i http://localhost:3000/documents \
 # 202 Accepted, Location: /documents/<id>
 
 ID=<id from the response>
-curl -s http://localhost:3000/documents/$ID -H "Authorization: Bearer $TOKEN" | jq          # status
-curl -s http://localhost:3000/documents/$ID/history -H "Authorization: Bearer $TOKEN" | jq  # events
-curl -s http://localhost:3000/documents/$ID/result -H "Authorization: Bearer $TOKEN" | jq   # result
-curl -s 'http://localhost:3000/documents?status=Failed' -H "Authorization: Bearer $TOKEN" | jq
+curl -s --cacert "$CA" https://localhost:3443/documents/$ID -H "Authorization: Bearer $TOKEN" | jq          # status
+curl -s --cacert "$CA" https://localhost:3443/documents/$ID/history -H "Authorization: Bearer $TOKEN" | jq  # events
+curl -s --cacert "$CA" https://localhost:3443/documents/$ID/result -H "Authorization: Bearer $TOKEN" | jq   # result
+curl -s --cacert "$CA" 'https://localhost:3443/documents?status=Failed' -H "Authorization: Bearer $TOKEN" | jq
 ```
 
 Errors are RFC 9457 Problem Details (`application/problem+json`) with a stable `code`; the

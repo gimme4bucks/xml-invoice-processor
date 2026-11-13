@@ -1,7 +1,7 @@
 # xml-invoice-processor
 
 A backend that receives **Peppol BIS Billing 3.0 invoices (UBL 2.1 XML)** from B2B systems over
-HTTP, validates them, stores them so that an accepted document is never lost, and processes them
+HTTPS, validates them, stores them so that an accepted document is never lost, and processes them
 asynchronously. Every document has a status: `Received`, `Processing`, `Completed` or `Failed`.
 
 - [Quick start](#quick-start)
@@ -24,10 +24,10 @@ yourself needs buildx 0.17 or newer), Node 22 and pnpm 10 (through Corepack) for
 ```bash
 git clone https://github.com/gimme4bucks/xml-invoice-processor.git && cd xml-invoice-processor
 corepack enable && pnpm install
-docker compose --profile full up -d --build --wait   # Postgres, RabbitMQ, migrations, API, worker, mock IdP
+docker compose --profile full up -d --build --wait   # Postgres, RabbitMQ, migrations, API, worker, mock IdP, HTTPS edge
 pnpm demo                                            # walks through every scenario against the running stack
 pnpm e2e                                             # the end-to-end tests, including RabbitMQ and Postgres outages
-docker compose --profile full down --volumes         # stop everything and remove the data
+docker compose --profile full down --volumes         # stop everything and remove the data (and the edge's CA)
 ```
 
 The first build takes a few minutes: it downloads the Peppol rules (sha256-checked) and compiles
@@ -43,14 +43,26 @@ docker compose --profile full up -d --wait   # no --build: uses the pulled image
 [examples](examples/README.md) show the same flows with curl, the demo clients and what each
 example invoice does.
 
-| What                   | Where                                                           |
-| ---------------------- | --------------------------------------------------------------- |
-| API                    | http://localhost:3000                                           |
-| OpenAPI (Swagger UI)   | http://localhost:3000/docs, JSON at `/openapi.json`             |
-| Mock identity provider | http://localhost:4000 (`POST /token`, `/.well-known/jwks.json`) |
-| RabbitMQ management    | http://localhost:15672 (user `xip`, password `xip`)             |
+The API and the mock IdP are only reachable over HTTPS, through a Caddy reverse proxy (the
+`edge`) with its own local CA ([ADR 0013](docs/adr/0013-tls-at-the-edge.md)). `pnpm demo` and
+`pnpm e2e` export its root certificate and trust it by themselves; nothing switches certificate
+verification off. For curl, `pnpm tls:ca` exports it to `.tls/edge-root-ca.crt`:
 
-The demo clients and their secrets in `docker-compose.yml` are for local use only.
+```bash
+curl --cacert "$(pnpm -s tls:ca)" https://localhost:3443/health   # {"status":"ok"}
+```
+
+| What                   | Where                                                                                  |
+| ---------------------- | -------------------------------------------------------------------------------------- |
+| API                    | https://localhost:3443                                                                 |
+| OpenAPI (Swagger UI)   | https://localhost:3443/docs, JSON at `/openapi.json` (the browser warns, see below)    |
+| Mock identity provider | https://localhost:4443 (`POST /token`, `/.well-known/jwks.json`)                       |
+| Edge root certificate  | `pnpm tls:ca` (a new one after `down --volumes`)                                       |
+| RabbitMQ management    | http://localhost:15672 (user `xip`, password `xip`; a local tool, not behind the edge) |
+
+The demo clients and their secrets in `docker-compose.yml` are for local use only. A browser
+does not know the edge's CA, so Swagger UI shows a certificate warning unless you add
+`.tls/edge-root-ca.crt` to your system or browser as a trusted root.
 
 **Local development** (Node processes against Dockerised Postgres and RabbitMQ):
 
@@ -64,10 +76,13 @@ pnpm verify                                    # format, lint, types, architectu
 pnpm test:contract                             # the port contracts against real Postgres and RabbitMQ
 ```
 
+During local development the API (port 3000) and the mock IdP (port 4000) run natively and speak
+plain HTTP on `localhost`; only the full compose stack has the HTTPS edge.
+
 ## Check that it really ran
 
 `pnpm demo` checks every response itself and exits with a non-zero code when one is wrong. These
-are four ways to see for yourself that the documents really went through Postgres, RabbitMQ and
+are five ways to see for yourself that the documents really went through Postgres, RabbitMQ and
 the worker, against the running stack from the quick start.
 
 **1. Stop the worker.** Processing depends on the worker, and nothing is lost while it is down:
@@ -123,6 +138,16 @@ docker compose logs -f api | grep -v /health
 
 The worker logs only at startup and on errors, not for every message. Its work shows in the event
 history and in RabbitMQ instead.
+
+**5. HTTPS at the edge.** The certificate is verified against the edge's own CA, verification
+fails without it, and plain HTTP is refused instead of redirected:
+
+```bash
+curl -sv --cacert "$(pnpm -s tls:ca)" https://localhost:3443/health 2>&1 | grep -E 'issuer|SSL certificate verify|strict'
+curl -sS https://localhost:3443/health       # without the CA: "SSL certificate problem: unable to get local issuer certificate"
+curl -si http://localhost:3443/health        # plain HTTP: 400 "Client sent an HTTP request to an HTTPS server", no Location
+docker compose ps api mock-idp               # no host ports: only the edge publishes 3443 and 4443
+```
 
 ## API
 
@@ -298,6 +323,14 @@ order it was made, is in the [decision log](docs/decision-log.md).
 - The organisation is taken from the token only. Another organisation's document answers `404`.
 - XML: any DOCTYPE is rejected, external entities are never resolved and the parser never touches
   the network (`NONET | NO_XXE`). The body is read only after authentication, at most 1 MiB, UTF-8 only.
+- HTTPS only, ending at a Caddy reverse proxy (the `edge`, [ADR 0013](docs/adr/0013-tls-at-the-edge.md)).
+  The API and the mock IdP publish no ports of their own. Plain HTTP gets a `400`, never a
+  redirect: a redirect would come only after the secret or token had been sent in clear text. The
+  demo, the e2e tests and the curl examples verify the certificate against the exported CA;
+  nothing switches verification off. The edge also limits request bodies, just above the API's
+  1 MiB.
+- The API trusts exactly one proxy hop (`TRUST_PROXY`, off by default), so a client cannot spoof
+  its address with `X-Forwarded-For`. Responses carry `Strict-Transport-Security`.
 - Rate limit per organisation (120 requests a minute by default), helmet headers, no CORS.
 - Logs contain IDs only: never XML content, amounts, VAT numbers or tokens (the `Authorization`
   header is redacted). Every log line carries the correlation id.
