@@ -21,10 +21,13 @@ describe('UblInvoiceMapper', () => {
       supplier: { ...invoice.supplier, endpointId: invoice.supplier.endpointId.toString() },
       customer: { ...invoice.customer, endpointId: invoice.customer.endpointId.toString() },
     }).toEqual({
+      documentType: 'Invoice',
       invoiceNumber: 'INV-2026-0101',
+      typeCode: '380',
       issueDate: '2026-11-02',
       dueDate: '2026-12-02',
       currency: 'EUR',
+      precedingInvoices: [],
       supplier: {
         name: 'Acme Supplies B.V.',
         endpointId: '0106:11111111',
@@ -90,6 +93,54 @@ describe('UblInvoiceMapper', () => {
       taxInclusiveAmount: '741.25',
       payableAmount: '641.25',
     });
+  });
+
+  it('maps a credit note: its number, type code, credited lines and the invoice it credits', () => {
+    const creditNote = mapper.map(peppolFixture('credit-note'));
+
+    expect(creditNote).toMatchObject({
+      documentType: 'CreditNote',
+      creditNoteNumber: 'CN-2026-0007',
+      typeCode: '381',
+      issueDate: '2026-11-10',
+      currency: 'EUR',
+      precedingInvoices: [{ invoiceNumber: 'INV-2026-0101', issueDate: '2026-11-02' }],
+      lines: [
+        {
+          id: '1',
+          description: 'Training workbook (returned)',
+          quantity: '1',
+          unitCode: 'C62',
+          netAmount: '100.00',
+          vatCategory: 'S',
+          vatPercent: '21',
+        },
+      ],
+      // Positive: the document type says that it credits.
+      totals: {
+        lineExtensionAmount: '100.00',
+        taxExclusiveAmount: '100.00',
+        taxAmount: '21.00',
+        taxInclusiveAmount: '121.00',
+        payableAmount: '121.00',
+      },
+    });
+    expect(creditNote).not.toHaveProperty('invoiceNumber');
+    expect(creditNote.supplier.vatNumber).toBe('NL001234567B01');
+    expect(
+      determineDirection(
+        organisation,
+        creditNote.supplier.endpointId,
+        creditNote.customer.endpointId,
+      ),
+    ).toBe('sales');
+  });
+
+  it('maps a credit note without a preceding invoice reference to an empty list', () => {
+    const xml = peppolFixture('credit-note')
+      .toString('utf8')
+      .replace(/<cac:BillingReference>[\s\S]*<\/cac:BillingReference>/, '');
+    expect(mapper.map(Buffer.from(xml)).precedingInvoices).toEqual([]);
   });
 
   it('maps all 300 lines of a large invoice', () => {

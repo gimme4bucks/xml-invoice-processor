@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { DocumentEvent } from '../../../domain/document-events';
-import type { DocumentStatus } from '../../../domain/value-objects';
+import type { DocumentStatus, DocumentType } from '../../../domain/value-objects';
 import {
   type Blob,
   BlobStore,
@@ -79,11 +79,17 @@ export class InMemoryDocumentViews extends DocumentViews {
 
   async list(
     organisationId: string,
-    options: { limit: number; cursor?: string; status?: DocumentStatus },
+    options: {
+      limit: number;
+      cursor?: string;
+      status?: DocumentStatus;
+      documentType?: DocumentType;
+    },
   ): Promise<DocumentPage> {
     const all = [...this.db.tables.views.values()]
       .filter((v) => v.organisationId === organisationId)
       .filter((v) => !options.status || v.status === options.status)
+      .filter((v) => !options.documentType || v.documentType === options.documentType)
       .sort(
         (a, b) =>
           b.receivedAt.getTime() - a.receivedAt.getTime() ||

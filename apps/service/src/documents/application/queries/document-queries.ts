@@ -1,6 +1,6 @@
 import { IQueryHandler, QueryHandler } from '@nestjs/cqrs';
 import type { DocumentEvent } from '../../domain/document-events';
-import type { DocumentStatus } from '../../domain/value-objects';
+import type { DocumentStatus, DocumentType } from '../../domain/value-objects';
 import { resultBlobKey } from '../document-view';
 import { DocumentNotFoundError } from '../errors';
 import {
@@ -35,7 +35,12 @@ export class GetDocumentHandler implements IQueryHandler<GetDocumentQuery, Docum
 export class ListDocumentsQuery {
   constructor(
     readonly organisationId: string,
-    readonly options: { limit: number; cursor?: string; status?: DocumentStatus },
+    readonly options: {
+      limit: number;
+      cursor?: string;
+      status?: DocumentStatus;
+      documentType?: DocumentType;
+    },
   ) {}
 }
 

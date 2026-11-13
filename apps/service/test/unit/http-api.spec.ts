@@ -17,8 +17,10 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createInMemoryAdapters, inMemoryProviders } from '../../src/app/adapters';
 import { ApiModule, type ApiOptions } from '../../src/app/modules';
 import type { AuthOptions } from '../../src/shared/auth/auth-options';
+import type { DocumentListDto } from '../../src/documents/adapters/inbound/http/document.dto';
 import { MAX_DOCUMENT_BYTES } from '../../src/documents/adapters/inbound/http/xml-body';
 import { configureHttpApp, httpAppOptions } from '../../src/shared/http/http-app';
+import { peppolFixture } from '../fixtures/peppol';
 
 /**
  * The HTTP API through supertest: ApiModule with the in-memory adapters, the real guards, filter,
@@ -309,10 +311,14 @@ describe('HTTP API', () => {
       });
     });
 
-    it('422 DOCUMENT_REJECTED for a CreditNote (not supported yet)', async () => {
-      const res = await submit('<CreditNote xmlns="urn:x"></CreditNote>');
-      expect(res.status).toBe(422);
-      expect(res.body.reason).toBe('unsupported-document-type');
+    it('accepts a credit note with 202; its documentType is CreditNote', async () => {
+      const res = await submit(peppolFixture('credit-note'));
+      expect(res.status).toBe(202);
+
+      const status = await http()
+        .get(res.headers.location!)
+        .set('Authorization', `Bearer ${await token()}`);
+      expect(status.body).toMatchObject({ documentType: 'CreditNote', direction: 'sales' });
     });
 
     it('422 NOT_A_PARTY when the token organisation is neither supplier nor customer', async () => {
@@ -456,18 +462,47 @@ describe('HTTP API', () => {
       expect(completed.body).toEqual({ items: [] });
     });
 
-    it.each(['limit=0', 'limit=101', 'limit=abc', 'status=Done', 'cursor=%3Cx%3E', 'org_id=other'])(
-      '400 INVALID_REQUEST for ?%s',
-      async (query) => {
-        const res = await http()
-          .get(`/documents?${query}`)
-          .set('Authorization', await asCustomer());
-        expect(res.status).toBe(400);
-        expect(res.headers['content-type']).toMatch(PROBLEM_JSON);
-        expect(res.body.code).toBe('INVALID_REQUEST');
-        expect(res.body.errors[0].in).toBe('query');
-      },
-    );
+    it('filters by document type', async () => {
+      const creditNote = await submit(peppolFixture('credit-note'), {
+        bearer: await token(customer),
+      });
+      expect(creditNote.status).toBe(202);
+
+      const creditNotes = await http()
+        .get('/documents?type=CreditNote')
+        .set('Authorization', await asCustomer());
+      expect(creditNotes.status).toBe(200);
+      expect(creditNotes.body.items).toEqual([
+        expect.objectContaining({
+          documentId: creditNote.body.documentId,
+          documentType: 'CreditNote',
+        }),
+      ]);
+      const invoices = await http()
+        .get('/documents?type=Invoice&limit=100')
+        .set('Authorization', await asCustomer());
+      const types = (invoices.body as DocumentListDto).items.map((item) => item.documentType);
+      expect(types.length).toBeGreaterThan(0);
+      expect(new Set(types)).toEqual(new Set(['Invoice']));
+    });
+
+    it.each([
+      'limit=0',
+      'limit=101',
+      'limit=abc',
+      'status=Done',
+      'type=Order',
+      'cursor=%3Cx%3E',
+      'org_id=other',
+    ])('400 INVALID_REQUEST for ?%s', async (query) => {
+      const res = await http()
+        .get(`/documents?${query}`)
+        .set('Authorization', await asCustomer());
+      expect(res.status).toBe(400);
+      expect(res.headers['content-type']).toMatch(PROBLEM_JSON);
+      expect(res.body.code).toBe('INVALID_REQUEST');
+      expect(res.body.errors[0].in).toBe('query');
+    });
   });
 
   describe('GET /documents/{id}, /result and /history', () => {
@@ -547,6 +582,22 @@ describe('HTTP API', () => {
         expect.arrayContaining(['/documents', '/documents/{id}', '/documents/{id}/history']),
       );
       expect((await http().get('/docs')).status).toBe(200);
+    });
+
+    it('documents documentType as Invoice or CreditNote, and the type filter', async () => {
+      const { body } = await http().get('/openapi.json');
+      expect(body.components.schemas.DocumentDto.properties.documentType.enum).toEqual([
+        'Invoice',
+        'CreditNote',
+      ]);
+      const parameters = body.paths['/documents'].get.parameters as {
+        name: string;
+        schema: { enum?: string[] };
+      }[];
+      expect(parameters.find((p) => p.name === 'type')?.schema.enum).toEqual([
+        'Invoice',
+        'CreditNote',
+      ]);
     });
   });
 });

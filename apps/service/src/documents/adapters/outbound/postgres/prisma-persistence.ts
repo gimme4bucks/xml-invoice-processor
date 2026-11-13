@@ -166,7 +166,12 @@ export class PrismaDocumentViews extends DocumentViews {
   /** Keyset pagination on (received_at DESC, document_id DESC): stable while new rows arrive. */
   async list(
     organisationId: string,
-    options: { limit: number; cursor?: string; status?: DocumentStatus },
+    options: {
+      limit: number;
+      cursor?: string;
+      status?: DocumentStatus;
+      documentType?: DocumentType;
+    },
   ): Promise<DocumentPage> {
     const after = options.cursor ? decodeCursor(options.cursor) : undefined;
     const rows = await guardUnavailable(() =>
@@ -174,6 +179,7 @@ export class PrismaDocumentViews extends DocumentViews {
         where: {
           organisationId,
           ...(options.status ? { status: options.status } : {}),
+          ...(options.documentType ? { documentType: options.documentType } : {}),
           ...(after
             ? {
                 OR: [

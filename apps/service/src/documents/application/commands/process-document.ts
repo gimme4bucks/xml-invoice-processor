@@ -86,10 +86,10 @@ export class ProcessDocumentHandler implements ICommandHandler<
       });
     }
 
-    const invoice = this.mapper.map(original.content);
-    // The counterparty: on a purchase invoice the supplier, on a sales invoice the customer.
+    const canonical = this.mapper.map(original.content);
+    // The counterparty: on a purchase document the supplier, on a sales document the customer.
     const role = document.direction === 'purchase' ? 'supplier' : 'customer';
-    const counterparty = invoice[role];
+    const counterparty = canonical[role];
     if (counterparty.vatNumber) {
       try {
         const verdict = await this.vat.verify(counterparty.vatNumber);
@@ -109,7 +109,13 @@ export class ProcessDocumentHandler implements ICommandHandler<
       }
     }
 
-    const result = { documentId: document.id, direction: document.direction, invoice };
+    const result = {
+      documentId: document.id,
+      direction: document.direction,
+      ...(canonical.documentType === 'CreditNote'
+        ? { creditNote: canonical }
+        : { invoice: canonical }),
+    };
     return this.save(document, input, 'completed', async (doc, tx) => {
       await this.blobs.put(
         {

@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- Written for this project (not an OpenPeppol example). A Peppol BIS Billing 3.0 credit note
-     that partly credits INV-2026-0101. Credit notes are not supported yet and must be rejected. -->
+     (type code 381) that partly credits INV-2026-0101: one returned workbook. Passes the UBL 2.1
+     CreditNote XSD and the official CEN and Peppol rules. -->
 <CreditNote xmlns="urn:oasis:names:specification:ubl:schema:xsd:CreditNote-2"
             xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2"
             xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2">

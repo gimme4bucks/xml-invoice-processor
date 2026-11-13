@@ -18,7 +18,7 @@ describe.skipIf(!built)('SchematronBusinessRuleValidator', { timeout: 60_000 }, 
 
   afterAll(() => validator.onModuleDestroy());
 
-  it.each(['valid-sales', 'valid-purchase'] as const)(
+  it.each(['valid-sales', 'valid-purchase', 'credit-note'] as const)(
     'finds no violations in %s',
     async (fixture) => {
       expect(await validator.validate(peppolFixture(fixture))).toEqual([]);
@@ -34,6 +34,18 @@ describe.skipIf(!built)('SchematronBusinessRuleValidator', { timeout: 60_000 }, 
       ['BR-CO-16', 'fatal', '/ubl:Invoice[1]/cac:LegalMonetaryTotal[1]'],
     ]);
     expect(violations[0]?.message).toMatch(/^\[BR-CO-10\]-Sum of Invoice line net amount/);
+  });
+
+  it('reports an invoice type code on a credit note as fatal PEPPOL-EN16931-P0101 and BR-CL-01', async () => {
+    const violations = await validator.validate(peppolFixture('credit-note-bad-type-code'));
+
+    expect(violations.map((v) => [v.ruleId, v.flag, v.location])).toEqual([
+      ['BR-CL-01', 'fatal', '/cn:CreditNote[1]/cbc:CreditNoteTypeCode[1]'],
+      ['PEPPOL-EN16931-P0101', 'fatal', '/cn:CreditNote[1]/cbc:CreditNoteTypeCode[1]'],
+    ]);
+    expect(violations[1]?.message).toMatch(
+      /Credit note type code MUST be set according to the profile/,
+    );
   });
 
   it('also reports a missing issue date (BR-03)', async () => {

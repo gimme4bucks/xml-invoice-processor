@@ -104,10 +104,15 @@ export abstract class DocumentViews {
   abstract upsert(view: DocumentView, tx: Transaction): Promise<void>;
   /** Scoped by organisation: another organisation's document is simply not found. */
   abstract get(organisationId: string, documentId: string): Promise<DocumentView | undefined>;
-  /** Newest first. */
+  /** Newest first; `status` and `documentType` narrow the list when given. */
   abstract list(
     organisationId: string,
-    options: { limit: number; cursor?: string; status?: DocumentStatus },
+    options: {
+      limit: number;
+      cursor?: string;
+      status?: DocumentStatus;
+      documentType?: DocumentType;
+    },
   ): Promise<DocumentPage>;
   /**
    * For the sweeper, across all organisations: documents that are not final, whose read model

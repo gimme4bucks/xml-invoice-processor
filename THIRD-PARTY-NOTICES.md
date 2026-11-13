@@ -33,8 +33,9 @@ The full licence text is in `node_modules/saxon-js/LICENSE.txt` after `pnpm inst
 
 ## OASIS Universal Business Language (UBL) 2.1
 
-The runtime schemas in `apps/service/validation-artifacts/ubl-2.1/xsdrt/` are copied unmodified
-from the UBL 2.1 OASIS Standard. Copyright © OASIS Open 2001-2013. All Rights Reserved. The OASIS
+The runtime schemas in `apps/service/validation-artifacts/ubl-2.1/xsdrt/` (the Invoice and
+CreditNote main schemas and the common schemas they import) are copied unmodified from the UBL 2.1
+OASIS Standard. Copyright © OASIS Open 2001-2013. All Rights Reserved. The OASIS
 notice is reproduced in `apps/service/validation-artifacts/ubl-2.1/NOTICE.txt`.
 
 ## CEN EN 16931 validation artifacts 1.3.16 (EUPL-1.2)

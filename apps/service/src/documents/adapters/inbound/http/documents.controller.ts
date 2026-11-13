@@ -8,6 +8,7 @@ import {
   ApiHeader,
   ApiOkResponse,
   ApiOperation,
+  ApiQuery,
   ApiTags,
 } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
@@ -36,6 +37,8 @@ import {
 } from './document.dto';
 import {
   documentIdSchema,
+  documentStatuses,
+  documentTypes,
   idempotencyKeySchema,
   type ListDocumentsQueryParams,
   listDocumentsQuerySchema,
@@ -109,14 +112,23 @@ export class DocumentsController {
   @Get()
   @RequireScope('documents:read')
   @ApiOperation({ summary: "List your organisation's documents, newest first" })
+  @ApiQuery({ name: 'status', required: false, enum: documentStatuses })
+  @ApiQuery({ name: 'type', required: false, enum: documentTypes, description: 'Document type' })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+  })
+  @ApiQuery({ name: 'cursor', required: false, description: '`nextCursor` of the previous page' })
   @ApiOkResponse({ type: DocumentListDto })
   @ApiProblemResponses(400)
   async list(
     @CurrentPrincipal() principal: Principal,
     @Query(new Validate(listDocumentsQuerySchema, 'query')) query: ListDocumentsQueryParams,
   ): Promise<DocumentListDto> {
+    const { type, ...options } = query;
     const page: DocumentPage = await this.queries.execute(
-      new ListDocumentsQuery(principal.organisationId, query),
+      new ListDocumentsQuery(principal.organisationId, { ...options, documentType: type }),
     );
     return {
       items: page.items.map(toDocumentDto),
