@@ -108,16 +108,18 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm -F @xip/service prisma:generate
-      # Builds both images from this commit; --wait returns once every service is healthy or running
-      # and the migrate one-shot has completed.
+      # Builds the three images (service, mock IdP, support app) from this commit; --wait returns
+      # once every service is healthy or running and the migrate one-shot has completed.
       - run: docker compose --profile full up -d --build --wait --wait-timeout 300
-      # The API and the mock IdP are only reachable over HTTPS through the edge (ADR 0013). This is
-      # the curl path from the README: verified against the exported root, plain HTTP refused.
+      # The API, the mock IdP and the support app are only reachable over HTTPS through the edge
+      # (ADR 0013, 0018). This is the curl path from the README: verified against the exported
+      # root, plain HTTP refused.
       - name: HTTPS at the edge with the exported CA
         run: |
           CA=$(pnpm -s tls:ca)
           curl --fail --silent --show-error --cacert "$CA" https://localhost:3443/health
           curl --fail --silent --show-error --cacert "$CA" -o /dev/null https://localhost:4443/.well-known/jwks.json
+          curl --fail --silent --show-error --cacert "$CA" -o /dev/null https://localhost:5443/
           test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://localhost:3443/health)" = 400
       # The e2e tests kill RabbitMQ and pause Postgres themselves (docker compose), then the demo
       # runs against the same stack as a smoke test of `pnpm demo`. Both export the edge's root

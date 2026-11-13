@@ -1,6 +1,7 @@
 name: Release
 
-# Publishes the service image and the mock-idp image to GHCR for linux/amd64 and linux/arm64.
+# Publishes the service, mock-idp and web (support app) images to GHCR for linux/amd64 and
+# linux/arm64.
 # Each architecture builds natively on its own runner (no QEMU) and pushes by digest; a merge
 # job then joins the digests into one multi-arch manifest and tags it:
 #   push to main  -> main, sha-<short>
@@ -29,6 +30,8 @@ jobs:
             dockerfile: Dockerfile
           - name: xml-invoice-processor-mock-idp
             dockerfile: apps/mock-idp/Dockerfile
+          - name: xml-invoice-processor-web
+            dockerfile: apps/web/Dockerfile
         platform:
           - arch: amd64
             runner: ubuntu-24.04
@@ -78,7 +81,7 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           # The image name goes last: `digests-*-xml-invoice-processor` must not also match the
-          # mock-idp digests (`...-xml-invoice-processor-mock-idp`).
+          # mock-idp and web digests (`...-xml-invoice-processor-mock-idp`, `...-web`).
           name: digests-${{ matrix.platform.arch }}-${{ matrix.image.name }}
           path: ${{ runner.temp }}/digests/*
           if-no-files-found: error
@@ -89,7 +92,7 @@ jobs:
     needs: build
     strategy:
       matrix:
-        image: [xml-invoice-processor, xml-invoice-processor-mock-idp]
+        image: [xml-invoice-processor, xml-invoice-processor-mock-idp, xml-invoice-processor-web]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
