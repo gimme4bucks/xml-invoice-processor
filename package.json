@@ -16,11 +16,12 @@
     "depcruise": "depcruise apps/service/src --config .dependency-cruiser.cjs",
     "test": "pnpm -r test",
     "test:contract": "pnpm -F @xip/service test:contract",
-    "e2e": "pnpm -F @xip/service test:e2e",
+    "e2e": "sh scripts/tls/edge-ca.sh pnpm -F @xip/service test:e2e",
     "verify": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm depcruise && pnpm test && pnpm build",
     "infra:up": "docker compose --profile infra up -d --wait",
     "infra:down": "docker compose --profile infra down",
-    "demo": "node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/demo/demo.mts"
+    "tls:ca": "sh scripts/tls/edge-ca.sh",
+    "demo": "sh scripts/tls/edge-ca.sh node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/demo/demo.mts"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

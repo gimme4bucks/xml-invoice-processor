@@ -1,8 +1,9 @@
 /**
  * `pnpm demo`: walks through the main scenarios against the running stack
  * (`docker compose --profile full up -d --build --wait`) and prints what happens. It only uses the
- * public API and the mock IdP, exactly like a client would, and exits non-zero when an outcome is
- * not the expected one. The outage scenarios (RabbitMQ or Postgres down) are in `pnpm e2e`,
+ * public API and the mock IdP, over HTTPS through the edge, exactly like a client would, and exits
+ * non-zero when an outcome is not the expected one. `pnpm demo` first exports the edge's root
+ * certificate and trusts it (scripts/tls/edge-ca.sh); verification is never switched off. The outage scenarios (RabbitMQ or Postgres down) are in `pnpm e2e`,
  * because they stop containers.
  *
  * Every run submits fresh invoices (new invoice number, new customer VAT number), because the API
@@ -11,8 +12,8 @@
 import { randomInt, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
-const API = process.env.API_BASE_URL ?? 'http://localhost:3000';
-const IDP = process.env.IDP_BASE_URL ?? 'http://localhost:4000';
+const API = process.env.API_BASE_URL ?? 'https://localhost:3443';
+const IDP = process.env.IDP_BASE_URL ?? 'https://localhost:4443';
 const INVALID_VAT_NUMBER = (process.env.VIES_INVALID_VAT_NUMBERS ?? 'NL999999999B99').split(',')[0];
 const CLIENTS = {
   supplier: { id: 'supplier-client', secret: process.env.DEMO_SUPPLIER_SECRET ?? 'change-me' },
