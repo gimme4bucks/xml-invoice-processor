@@ -69,11 +69,71 @@ export interface SupportApi {
   getHistory(documentId: string): Promise<HistoryEntry[]>;
 }
 
-export function supportApi(_options: {
+/**
+ * The read-only support endpoints (ADR 0017), called with the session's bearer token and never
+ * with cookies. A 401, or a token that has already expired, ends the session through
+ * `onUnauthorized`, which sends the user back to sign in.
+ */
+export function supportApi(options: {
   apiUrl: string;
   session: Session;
   onUnauthorized: () => void;
 }): SupportApi {
-  const notImplemented = () => Promise.reject(new Error('Not implemented'));
-  return { listDocuments: notImplemented, getDocument: notImplemented, getHistory: notImplemented };
+  const documents = `${options.apiUrl}/support/documents`;
+
+  async function get<T>(url: string): Promise<T> {
+    if (Date.now() >= options.session.expiresAt) {
+      options.onUnauthorized();
+      throw new ApiError(401, 'SESSION_EXPIRED', 'Your session has expired');
+    }
+    const response = await fetch(url, {
+      headers: { authorization: `Bearer ${options.session.accessToken}` },
+      credentials: 'omit',
+    }).catch(() => {
+      throw new ApiError(
+        0,
+        'NETWORK_ERROR',
+        'Could not reach the API',
+        'Check the connection, and that this browser trusts the local CA (README, "Support view").',
+      );
+    });
+    if (response.ok) return (await response.json()) as T;
+    if (response.status === 401) options.onUnauthorized();
+    throw await toApiError(response);
+  }
+
+  return {
+    listDocuments(filters, cursor) {
+      const query = new URLSearchParams();
+      for (const [name, value] of Object.entries({ ...filters, cursor })) {
+        if (value) query.set(name, value);
+      }
+      const search = query.size > 0 ? `?${query.toString()}` : '';
+      return get<DocumentPage>(`${documents}${search}`);
+    },
+    getDocument(documentId) {
+      return get<SupportDocument>(`${documents}/${encodeURIComponent(documentId)}`);
+    },
+    async getHistory(documentId) {
+      const url = `${documents}/${encodeURIComponent(documentId)}/history`;
+      return (await get<{ history: HistoryEntry[] }>(url)).history;
+    },
+  };
+}
+
+/** Problem Details when the API sent them; otherwise (an edge or proxy error) the status only. */
+async function toApiError(response: Response): Promise<ApiError> {
+  const retryAfter = Number(response.headers.get('retry-after') ?? Number.NaN);
+  const retryAfterSeconds = Number.isInteger(retryAfter) ? retryAfter : undefined;
+  const problem = response.headers.get('content-type')?.includes('json')
+    ? ((await response.json().catch(() => ({}))) as Record<string, unknown>)
+    : {};
+  const text = (value: unknown) => (typeof value === 'string' ? value : undefined);
+  return new ApiError(
+    response.status,
+    text(problem.code) ?? `HTTP_${response.status}`,
+    text(problem.title) ?? `The API answered ${response.status}`,
+    text(problem.detail),
+    retryAfterSeconds,
+  );
 }
