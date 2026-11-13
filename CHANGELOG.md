@@ -6,6 +6,19 @@ All notable changes to this project. The format follows
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-13
+
+The extras on top of v1.0.0:
+
+- HTTPS at the edge.
+- Tools that recover stuck documents.
+- Credit notes.
+- Documents in S3.
+- A support view in the browser.
+- Chaos tests that prove no document is lost or processed twice when infrastructure fails hard.
+
+Every work package was built test-first.
+
 ### Added
 
 - **HTTPS at the edge** ([ADR 0013](docs/adr/0013-tls-at-the-edge.md)):
@@ -80,4 +93,6 @@ validates them, stores them without loss and processes them asynchronously.
   and enforced architecture rules.
 - **Documentation:** README, twelve ADRs, the decision log, the spike reports and the AI usage log.
 
+[Unreleased]: https://github.com/gimme4bucks/xml-invoice-processor/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/gimme4bucks/xml-invoice-processor/releases/tag/v1.1.0
 [1.0.0]: https://github.com/gimme4bucks/xml-invoice-processor/releases/tag/v1.0.0
