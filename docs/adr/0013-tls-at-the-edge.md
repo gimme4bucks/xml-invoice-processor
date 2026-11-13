@@ -30,9 +30,10 @@ In production, TLS usually ends at a load balancer or ingress in front of the se
 - **Behind the proxy.**
   - The API trusts exactly one proxy hop (`TRUST_PROXY`, off by default and `true` in compose). Express then takes the client address and the scheme from the `X-Forwarded-For` and `X-Forwarded-Proto` entries that the edge added. A client cannot pick its own address by sending `X-Forwarded-For`; that would otherwise reset the rate limiter's per-IP fallback with every request.
   - Caddy does not trust incoming `X-Forwarded-*` headers either. It sets them from the connection it accepted.
-  - HSTS comes from the API (helmet: `max-age=31536000; includeSubDomains`) and the e2e tests check it.
+  - HSTS comes from the API (helmet, `includeSubDomains`) and the e2e tests check it. The max-age is configurable (`HSTS_MAX_AGE_SECONDS`): a year by default, as in production, and 300 seconds in the compose stack (see Consequences).
   - The edge limits request bodies to 1100 KiB, just above the API's own 1 MiB, as defence in depth. The API's limit stays the one clients normally hit, because it answers with Problem Details (`PAYLOAD_TOO_LARGE`).
 - **The edge is hardened like the other services.**
+  - A non-root user (uid 10001). The ports are above 1024, so no capability is needed to bind them, and the image's `/data/caddy` is world-writable, so a new `edge-data` volume is writable for that user.
   - Read-only root filesystem: only `/data` (the CA and certificates) is writable, and the Caddyfile is mounted read-only.
   - The admin API is off (`admin off`), so there is nothing to publish or protect. A configuration change means a restart.
   - Only HTTP/1.1 and HTTP/2 are enabled, because HTTP/3 would need UDP ports.
@@ -55,8 +56,11 @@ In production, TLS usually ends at a load balancer or ingress in front of the se
 
 - The demo, the e2e tests and the curl examples use HTTPS with a verified certificate. The CA is exported automatically on every `pnpm demo` and `pnpm e2e` run, so the reviewer path has no manual steps.
 - A client that does not use the exported CA gets a certificate error. That is the intent. Browsers show a warning for Swagger UI at `https://localhost:3443/docs` unless the root is trusted in the system or browser.
-- Firefox, and Chrome since version 132, ignore HSTS for `localhost`. Other browsers may remember it for every port on `localhost`, including the RabbitMQ management UI on 15672, which is plain HTTP.
+- **HSTS on `localhost`.** Firefox, and Chrome since version 132, ignore HSTS for `localhost`, but Safari applies it. HSTS covers every port of a host, so with a one-year max-age a reviewer who opens Swagger UI at `https://localhost:3443/docs` in Safari would have every `http://localhost` port forced to HTTPS for a year: our RabbitMQ management UI, and their own local projects. Two measures prevent that:
+  - The compose stack sends `max-age=300` (`HSTS_MAX_AGE_SECONDS`). Any pin lasts five minutes. Production keeps the default of a year.
+  - The README links the RabbitMQ management UI as `http://127.0.0.1:15672`. HSTS never applies to IP addresses, so that link works even while a pin for `localhost` lasts.
 - An extra container uses about 20 MB of memory.
+- The edge runs as uid 10001. An `edge-data` volume created by an earlier edge that ran as root (only on this branch before review) has root-owned files; `docker compose --profile full down --volumes` once creates a new one.
 - The ports are fixed at 3443 and 4443 because the issuer contains the IdP's URL. Changing them means changing `AUTH_ISSUER` in compose too.
 - The rate limiter's IP fallback sees the real client address behind the edge, instead of the edge's own address for every client.
 
@@ -74,3 +78,4 @@ In production, TLS usually ends at a load balancer or ingress in front of the se
 - Production: TLS at the load balancer or ingress with a public certificate, and TLS to Postgres, RabbitMQ and the IdP.
 - mTLS for B2B clients, if partners ask for it.
 - Upgrade Caddy to 2.11.9 once it is two weeks old. Its security fixes are mostly for FastCGI, which we do not use.
+- After that upgrade, drop all capabilities (`cap_drop: [ALL]`). Caddy 2.11.7's binary carries the file capability `cap_net_bind_service=+ep`, so with every capability dropped the kernel refuses to start it (`exec /usr/bin/caddy: operation not permitted`). Since 2.11.8, packagers can use `+p` instead, so Caddy also starts with every capability dropped.
