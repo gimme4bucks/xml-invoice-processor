@@ -225,6 +225,45 @@ export function describePersistenceContract(
         const completed = await h.views.list('org-1', { limit: 10, status: 'Completed' });
         expect(completed.items.map((v) => v.documentId)).toEqual([ids[1]]);
       });
+
+      it('lists one document type with the optional documentType filter', async () => {
+        const [invoice, creditNote, completedCreditNote] = [
+          randomUUID(),
+          randomUUID(),
+          randomUUID(),
+        ];
+        await h.uow.run(async (tx) => {
+          await h.views.upsert(view(invoice), tx);
+          await h.views.upsert(
+            view(creditNote, {
+              documentType: 'CreditNote',
+              receivedAt: new Date('2026-11-12T10:01:00.000Z'),
+            }),
+            tx,
+          );
+          await h.views.upsert(
+            view(completedCreditNote, {
+              documentType: 'CreditNote',
+              status: 'Completed',
+              receivedAt: new Date('2026-11-12T10:02:00.000Z'),
+            }),
+            tx,
+          );
+        });
+        const creditNotes = await h.views.list('org-1', { limit: 10, documentType: 'CreditNote' });
+        expect(creditNotes.items.map((v) => v.documentId)).toEqual([
+          completedCreditNote,
+          creditNote,
+        ]);
+        const invoices = await h.views.list('org-1', { limit: 10, documentType: 'Invoice' });
+        expect(invoices.items.map((v) => v.documentId)).toEqual([invoice]);
+        const both = await h.views.list('org-1', {
+          limit: 10,
+          documentType: 'CreditNote',
+          status: 'Received',
+        });
+        expect(both.items.map((v) => v.documentId)).toEqual([creditNote]);
+      });
     });
 
     describe('DocumentViews.findStuck (sweeper)', () => {

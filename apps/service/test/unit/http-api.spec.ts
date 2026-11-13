@@ -461,18 +461,50 @@ describe('HTTP API', () => {
       expect(completed.body).toEqual({ items: [] });
     });
 
-    it.each(['limit=0', 'limit=101', 'limit=abc', 'status=Done', 'cursor=%3Cx%3E', 'org_id=other'])(
-      '400 INVALID_REQUEST for ?%s',
-      async (query) => {
-        const res = await http()
-          .get(`/documents?${query}`)
-          .set('Authorization', await asCustomer());
-        expect(res.status).toBe(400);
-        expect(res.headers['content-type']).toMatch(PROBLEM_JSON);
-        expect(res.body.code).toBe('INVALID_REQUEST');
-        expect(res.body.errors[0].in).toBe('query');
-      },
-    );
+    it('filters by document type', async () => {
+      const creditNote = await submit(peppolFixture('credit-note'), {
+        bearer: await token(customer),
+      });
+      expect(creditNote.status).toBe(202);
+
+      const creditNotes = await http()
+        .get('/documents?type=CreditNote')
+        .set('Authorization', await asCustomer());
+      expect(creditNotes.status).toBe(200);
+      expect(creditNotes.body.items).toEqual([
+        expect.objectContaining({
+          documentId: creditNote.body.documentId,
+          documentType: 'CreditNote',
+        }),
+      ]);
+      const invoices = await http()
+        .get('/documents?type=Invoice&limit=100')
+        .set('Authorization', await asCustomer());
+      expect(invoices.body.items.length).toBeGreaterThan(0);
+      expect(
+        invoices.body.items.every(
+          (item: { documentType: string }) => item.documentType === 'Invoice',
+        ),
+      ).toBe(true);
+    });
+
+    it.each([
+      'limit=0',
+      'limit=101',
+      'limit=abc',
+      'status=Done',
+      'type=Order',
+      'cursor=%3Cx%3E',
+      'org_id=other',
+    ])('400 INVALID_REQUEST for ?%s', async (query) => {
+      const res = await http()
+        .get(`/documents?${query}`)
+        .set('Authorization', await asCustomer());
+      expect(res.status).toBe(400);
+      expect(res.headers['content-type']).toMatch(PROBLEM_JSON);
+      expect(res.body.code).toBe('INVALID_REQUEST');
+      expect(res.body.errors[0].in).toBe('query');
+    });
   });
 
   describe('GET /documents/{id}, /result and /history', () => {
@@ -552,6 +584,22 @@ describe('HTTP API', () => {
         expect.arrayContaining(['/documents', '/documents/{id}', '/documents/{id}/history']),
       );
       expect((await http().get('/docs')).status).toBe(200);
+    });
+
+    it('documents documentType as Invoice or CreditNote, and the type filter', async () => {
+      const { body } = await http().get('/openapi.json');
+      expect(body.components.schemas.DocumentDto.properties.documentType.enum).toEqual([
+        'Invoice',
+        'CreditNote',
+      ]);
+      const parameters = body.paths['/documents'].get.parameters as {
+        name: string;
+        schema: { enum?: string[] };
+      }[];
+      expect(parameters.find((p) => p.name === 'type')?.schema.enum).toEqual([
+        'Invoice',
+        'CreditNote',
+      ]);
     });
   });
 });
