@@ -95,7 +95,7 @@ export function parseRedriveArgs(args: string[]): RedriveOptions {
     }
     return options;
   } catch (error) {
-    throw new Error(`${(error as Error).message}\n${USAGE}`);
+    throw new Error(`${(error as Error).message}\n${USAGE}`, { cause: error });
   }
 }
 
