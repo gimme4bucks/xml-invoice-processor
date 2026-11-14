@@ -30,6 +30,8 @@ export interface HttpAppOptions {
    * CORS off; set, it opens only the read-only support endpoints (ADR 0017).
    */
   corsOrigins?: readonly string[];
+  /** The IdP's token endpoint for the Swagger UI login. */
+  oauthTokenUrl?: string;
 }
 
 /** Everything the API needs on top of ApiModule; shared by main-api.ts and the HTTP tests. */

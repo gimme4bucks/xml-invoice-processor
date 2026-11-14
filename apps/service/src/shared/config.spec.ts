@@ -22,4 +22,14 @@ describe('loadConfig', () => {
       expect(() => loadConfig({ CORS_ORIGINS: invalid }), invalid).toThrow();
     }
   });
+
+  it('takes the token URL for the Swagger UI login from AUTH_TOKEN_URL, an absolute URL', () => {
+    expect(loadConfig({}).AUTH_TOKEN_URL).toBeUndefined();
+    expect(loadConfig({ AUTH_TOKEN_URL: 'https://idp.test/token' }).AUTH_TOKEN_URL).toBe(
+      'https://idp.test/token',
+    );
+    for (const invalid of ['/token', 'idp.test/token']) {
+      expect(() => loadConfig({ AUTH_TOKEN_URL: invalid }), invalid).toThrow();
+    }
+  });
 });
