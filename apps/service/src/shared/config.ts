@@ -20,6 +20,8 @@ const schema = z.object({
   AUTH_ISSUER: z.string().min(1).optional(),
   AUTH_JWKS_URL: z.url().optional(),
   AUTH_AUDIENCE: z.string().min(1).optional(),
+  /** The IdP's token endpoint, for the Swagger UI's Authorize button (ADR 0019). Unset: no button. */
+  AUTH_TOKEN_URL: z.url().optional(),
   /** Requests per minute per organisation (per API instance). */
   RATE_LIMIT_PER_MINUTE: z.coerce.number().int().positive().default(120),
   /** Behind exactly one reverse proxy (the edge in compose): believe its X-Forwarded-* headers. */
