@@ -1,4 +1,10 @@
-import { createIdp, parseClients, parseSupportClient, SUPPORT_CLIENT_ID } from './idp';
+import {
+  createIdp,
+  parseClients,
+  parseCorsOrigins,
+  parseSupportClient,
+  SUPPORT_CLIENT_ID,
+} from './idp';
 
 // Mock IdP for dev, demo and e2e only. AUTH_ISSUER and AUTH_AUDIENCE match the API's settings.
 async function main(): Promise<void> {
@@ -11,14 +17,24 @@ async function main(): Promise<void> {
     process.env.MOCK_IDP_SUPPORT_USERS,
   );
 
-  const server = await createIdp({ issuer, audience, clients, support });
+  // Browser origins allowed to call /token besides the support app, e.g. the API's Swagger UI.
+  const corsOrigins = parseCorsOrigins(process.env.MOCK_IDP_CORS_ORIGINS);
+
+  const server = await createIdp({ issuer, audience, clients, support, corsOrigins });
   server.listen(port, '0.0.0.0', () => {
     // Redirect URIs and user names only; never a password.
     const supportClient = support
       ? { clientId: SUPPORT_CLIENT_ID, redirectUris: support.redirectUris }
       : 'off';
     console.log(
-      JSON.stringify({ msg: 'mock-idp listening', port, issuer, audience, supportClient }),
+      JSON.stringify({
+        msg: 'mock-idp listening',
+        port,
+        issuer,
+        audience,
+        supportClient,
+        corsOrigins,
+      }),
     );
   });
   const stop = () => {
