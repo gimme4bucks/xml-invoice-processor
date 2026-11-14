@@ -51,7 +51,9 @@ fetch() { # fetch <manifest id>: download fetched.<id> into its own directory an
   dir="$DOWNLOADS/$1"
   mkdir -p "$dir"
   echo "Fetching $url"
-  curl --fail --silent --show-error --location --retry 3 --output "$dir/$file" "$url"
+  # Retries every error, also a dropped connection or a reset stream, not only timeouts and 5xx;
+  # the sha256 check below still decides whether the file is the right one.
+  curl --fail --silent --show-error --location --retry 3 --retry-all-errors --retry-delay 2 --output "$dir/$file" "$url"
   verify "$dir/$file" "$sha"
   echo "  sha256 ok ($sha)"
 }
