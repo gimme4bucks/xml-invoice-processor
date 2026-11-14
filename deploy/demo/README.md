@@ -23,7 +23,7 @@ repository at the tag you deploy.
   to the server. Check with `dig +short api.demo.huizeblok.nl` before starting the edge: Let's
   Encrypt validates each hostname as soon as the edge starts.
 - **The image tag:** a release that contains the Swagger login and `MOCK_IDP_CORS_ORIGINS`
-  (later than 1.1.0).
+  (1.2.0 or later).
 
 ## 1. Install Docker (Ubuntu 24.04)
 

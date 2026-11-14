@@ -36,7 +36,7 @@ them. To skip it, use the published release images instead: they are public on G
 (`ghcr.io/gimme4bucks/xml-invoice-processor`, `-mock-idp` and `-web`, linux/amd64 and linux/arm64).
 
 ```bash
-docker compose --profile full pull           # the latest release; prefix both commands with TAG=1.1.0 to pin it
+docker compose --profile full pull           # the latest release; prefix both commands with TAG=1.2.0 to pin it
 docker compose --profile full up -d --wait   # no --build: uses the pulled images
 ```
 
