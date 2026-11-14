@@ -27,6 +27,8 @@ export interface IdpOptions {
   clients: Record<string, ClientConfig>;
   /** The `support-web` client; without it, only the client-credentials grant exists. */
   support?: SupportClientConfig;
+  /** Browser origins (exact) that may call /token, such as the API's Swagger UI. */
+  corsOrigins?: string[];
   tokenTtlSeconds?: number;
   /** How long an authorization code can be redeemed: 60 s by default. */
   codeTtlSeconds?: number;
@@ -56,6 +58,11 @@ export function parseClients(json: string | undefined): Record<string, ClientCon
       throw new Error(`MOCK_IDP_CLIENTS: client "${id}" needs secret, org_id, peppol_id, scopes`);
   }
   return parsed as Record<string, ClientConfig>;
+}
+
+/** Parses MOCK_IDP_CORS_ORIGINS. */
+export function parseCorsOrigins(_value: string | undefined): string[] {
+  return [];
 }
 
 /**
