@@ -6,6 +6,23 @@ All notable changes to this project. The format follows
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-14
+
+A public demo, and a login button in the Swagger UI so that testers need no curl.
+
+### Added
+
+- **Public demo deployment** ([ADR 0019](docs/adr/0019-public-demo.md), runbook in `deploy/demo/README.md`):
+  - the full stack on one server behind real hostnames, with Let's Encrypt certificates over the TLS-ALPN challenge on port 443;
+  - a compose override that publishes only the edge, points every URL, issuer, CORS origin and redirect URI to the public hosts, and takes every secret from a generated server-side `.env`;
+  - a scripted check of the rendered configuration.
+- **Swagger UI login:** an **Authorize** button with OAuth2 client credentials. Its token URL comes from `AUTH_TOKEN_URL`, and the mock IdP answers CORS on `/token` for the origins in `MOCK_IDP_CORS_ORIGINS`.
+- **`pnpm demo` against any host:** it runs against public URLs (`API_BASE_URL`, `IDP_BASE_URL`) and then trusts the public CAs.
+
+### Fixed
+
+- **Image builds:** a dropped connection or reset stream while downloading the validation artifacts no longer fails the build at once. The download now retries every error, and the sha256 check still guards the content.
+
 ## [1.1.0] - 2026-11-13
 
 The extras on top of v1.0.0:
@@ -93,6 +110,7 @@ validates them, stores them without loss and processes them asynchronously.
   and enforced architecture rules.
 - **Documentation:** README, twelve ADRs, the decision log, the spike reports and the AI usage log.
 
-[Unreleased]: https://github.com/gimme4bucks/xml-invoice-processor/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/gimme4bucks/xml-invoice-processor/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/gimme4bucks/xml-invoice-processor/releases/tag/v1.2.0
 [1.1.0]: https://github.com/gimme4bucks/xml-invoice-processor/releases/tag/v1.1.0
 [1.0.0]: https://github.com/gimme4bucks/xml-invoice-processor/releases/tag/v1.0.0
