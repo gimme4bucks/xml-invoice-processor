@@ -1,5 +1,6 @@
 import type { Server } from 'node:http';
 import { Controller, Get, type INestApplication, Module, Req } from '@nestjs/common';
+import { ApiBearerAuth } from '@nestjs/swagger';
 import { Test } from '@nestjs/testing';
 import type { Request } from 'express';
 import { LoggerModule } from 'nestjs-pino';
@@ -16,9 +17,28 @@ class ClientController {
   }
 }
 
+/** Stand-ins for the organisation endpoints and the support endpoints, as OpenAPI sees them. */
+@ApiBearerAuth()
+@Controller('documents')
+class OrganisationController {
+  @Get()
+  list(): string[] {
+    return [];
+  }
+}
+
+@ApiBearerAuth()
+@Controller('support/documents')
+class SupportController {
+  @Get()
+  list(): string[] {
+    return [];
+  }
+}
+
 @Module({
   imports: [LoggerModule.forRoot({ pinoHttp: { level: 'silent' } })],
-  controllers: [ClientController],
+  controllers: [ClientController, OrganisationController, SupportController],
 })
 class ClientModule {}
 
@@ -31,12 +51,17 @@ afterEach(async () => {
 
 /** GET /client on an app set up by configureHttpApp, with the given request headers. */
 async function getClient(options: HttpAppOptions, headers: Record<string, string> = {}) {
+  return get('/client', options, headers);
+}
+
+/** GET on an app set up by configureHttpApp. */
+async function get(path: string, options: HttpAppOptions, headers: Record<string, string> = {}) {
   const moduleRef = await Test.createTestingModule({ imports: [ClientModule] }).compile();
   app = moduleRef.createNestApplication(httpAppOptions);
   configureHttpApp(app, options);
   await app.init();
   return request(app.getHttpServer() as Server)
-    .get('/client')
+    .get(path)
     .set(headers);
 }
 
@@ -78,5 +103,53 @@ describe('configureHttpApp: Strict-Transport-Security', () => {
     const response = await getClient({ hstsMaxAgeSeconds: 300 });
 
     expect(response.headers['strict-transport-security']).toBe('max-age=300; includeSubDomains');
+  });
+});
+
+describe('configureHttpApp: the Swagger UI login with client credentials', () => {
+  const oauthTokenUrl = 'https://idp.test/token';
+
+  it('declares the clientCredentials flow with the configured tokenUrl and both scopes', async () => {
+    const { body } = await get('/openapi.json', { oauthTokenUrl });
+
+    expect(body.components.securitySchemes['client-credentials']).toEqual({
+      type: 'oauth2',
+      description: expect.any(String),
+      flows: {
+        clientCredentials: {
+          tokenUrl: oauthTokenUrl,
+          scopes: { 'documents:submit': expect.any(String), 'documents:read': expect.any(String) },
+        },
+      },
+    });
+    expect(body.components.securitySchemes.bearer).toMatchObject({ scheme: 'bearer' });
+  });
+
+  it('offers it on the organisation endpoints next to the bearer token, not on /support', async () => {
+    const { body } = await get('/openapi.json', { oauthTokenUrl });
+
+    expect(body.paths['/documents'].get.security).toEqual([
+      { bearer: [] },
+      { 'client-credentials': [] },
+    ]);
+    expect(body.paths['/support/documents'].get.security).toEqual([{ bearer: [] }]);
+  });
+
+  it('declares no OAuth2 flow without a token URL', async () => {
+    const { body } = await get('/openapi.json', {});
+
+    expect(body.components.securitySchemes['client-credentials']).toBeUndefined();
+    expect(body.paths['/documents'].get.security).toEqual([{ bearer: [] }]);
+  });
+
+  it("lets the Swagger UI connect to the token URL's origin, and to nothing else", async () => {
+    const withLogin = await get('/docs', { oauthTokenUrl });
+    expect(withLogin.headers['content-security-policy']).toMatch(
+      /(^|;)connect-src 'self' https:\/\/idp\.test(;|$)/,
+    );
+
+    const without = await get('/docs', {});
+    expect(without.headers['content-security-policy']).not.toContain('idp.test');
+    expect(without.headers['content-security-policy']).toContain("default-src 'self'");
   });
 });

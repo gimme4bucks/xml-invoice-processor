@@ -8,6 +8,7 @@ import {
 } from '@nestjs/swagger';
 import { PROBLEM_CONTENT_TYPE } from '../problem-details/problem-details';
 import { problemCodes } from '../problem-details/problem-codes';
+import { SUPPORT_PATH } from './support-cors';
 
 const catalogue = Object.entries(problemCodes);
 
@@ -86,8 +87,35 @@ export const ApiProblemResponses = (...statuses: number[]) =>
     ),
   );
 
-export function createOpenApiDocument(app: INestApplication): OpenAPIObject {
-  const config = new DocumentBuilder()
+export interface OpenApiOptions {
+  /** The IdP's token endpoint; set, the document declares a client-credentials flow. */
+  oauthTokenUrl?: string;
+}
+
+/** The security scheme of the Swagger UI's Authorize button for client credentials. */
+const CLIENT_CREDENTIALS = 'client-credentials';
+
+/**
+ * Offers the client-credentials login on every operation that takes the bearer token, except the
+ * support endpoints: their tokens come from Authorization Code + PKCE (ADR 0017). Each entry of
+ * `security` is an alternative, so the plain bearer token keeps working.
+ */
+function offerClientCredentials(document: OpenAPIObject): void {
+  for (const [path, item] of Object.entries(document.paths)) {
+    if (path === SUPPORT_PATH || path.startsWith(`${SUPPORT_PATH}/`)) continue;
+    for (const operation of Object.values(item) as { security?: Record<string, string[]>[] }[]) {
+      if (operation?.security?.some((requirement) => 'bearer' in requirement)) {
+        operation.security.push({ [CLIENT_CREDENTIALS]: [] });
+      }
+    }
+  }
+}
+
+export function createOpenApiDocument(
+  app: INestApplication,
+  options: OpenApiOptions = {},
+): OpenAPIObject {
+  const builder = new DocumentBuilder()
     .setTitle('XML invoice processor')
     .setDescription(description)
     .setVersion('1.0.0')
@@ -97,9 +125,28 @@ export function createOpenApiDocument(app: INestApplication): OpenAPIObject {
       bearerFormat: 'JWT',
       description:
         'Organisation: a client-credentials token with documents:submit and/or documents:read. Support: an Authorization Code + PKCE token with support:read and no org_id.',
-    })
-    .build();
-  const document = SwaggerModule.createDocument(app, config);
+    });
+  if (options.oauthTokenUrl) {
+    builder.addOAuth2(
+      {
+        type: 'oauth2',
+        description:
+          'Organisation login for trying the API here: the client id and secret of a demo client. Swagger UI fetches the token from the IdP.',
+        flows: {
+          clientCredentials: {
+            tokenUrl: options.oauthTokenUrl,
+            scopes: {
+              'documents:submit': 'Submit documents',
+              'documents:read': "Read your organisation's documents",
+            },
+          },
+        },
+      },
+      CLIENT_CREDENTIALS,
+    );
+  }
+  const document = SwaggerModule.createDocument(app, builder.build());
+  if (options.oauthTokenUrl) offerClientCredentials(document);
   document.components = {
     ...document.components,
     schemas: { ...document.components?.schemas, ProblemDetails: problemDetailsSchema },
@@ -108,8 +155,8 @@ export function createOpenApiDocument(app: INestApplication): OpenAPIObject {
 }
 
 /** Swagger UI at `/docs`, the raw document at `/openapi.json`. */
-export function setupOpenApi(app: INestApplication): void {
-  SwaggerModule.setup('docs', app, createOpenApiDocument(app), {
+export function setupOpenApi(app: INestApplication, options: OpenApiOptions = {}): void {
+  SwaggerModule.setup('docs', app, createOpenApiDocument(app, options), {
     jsonDocumentUrl: 'openapi.json',
   });
 }

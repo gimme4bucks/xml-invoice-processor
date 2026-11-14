@@ -27,6 +27,8 @@ export interface IdpOptions {
   clients: Record<string, ClientConfig>;
   /** The `support-web` client; without it, only the client-credentials grant exists. */
   support?: SupportClientConfig;
+  /** Browser origins (exact) that may call /token, such as the API's Swagger UI. */
+  corsOrigins?: string[];
   tokenTtlSeconds?: number;
   /** How long an authorization code can be redeemed: 60 s by default. */
   codeTtlSeconds?: number;
@@ -56,6 +58,33 @@ export function parseClients(json: string | undefined): Record<string, ClientCon
       throw new Error(`MOCK_IDP_CLIENTS: client "${id}" needs secret, org_id, peppol_id, scopes`);
   }
   return parsed as Record<string, ClientConfig>;
+}
+
+/**
+ * Parses MOCK_IDP_CORS_ORIGINS (comma-separated): browser origins exactly as sent in `Origin`, no
+ * path, no wildcard. Throws with a readable message on bad input.
+ */
+export function parseCorsOrigins(value: string | undefined): string[] {
+  const origins = (value ?? '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+  for (const origin of origins) {
+    if (!isOrigin(origin)) {
+      throw new Error(
+        `MOCK_IDP_CORS_ORIGINS: "${origin}" is not an origin like https://host[:port]`,
+      );
+    }
+  }
+  return origins;
+}
+
+function isOrigin(value: string): boolean {
+  try {
+    return new URL(value).origin === value;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -138,8 +167,12 @@ export async function createIdp(options: IdpOptions): Promise<Server> {
   const kid = randomUUID();
   const jwks = { keys: [{ ...(await exportJWK(publicKey)), kid, alg: 'ES256', use: 'sig' }] };
   const codes = new Map<string, IssuedCode>();
-  // The browser app calls /token from the origin it is redirected to, and from nowhere else.
-  const corsOrigins = new Set(support?.redirectUris.map((uri) => new URL(uri).origin));
+  // Browsers call /token only from the support app (the origin it is redirected to) and from the
+  // configured origins, such as the API's Swagger UI (ADR 0019); from nowhere else.
+  const corsOrigins = new Set([
+    ...(support?.redirectUris.map((uri) => new URL(uri).origin) ?? []),
+    ...(options.corsOrigins ?? []),
+  ]);
 
   const signToken = (claims: Record<string, string>, subject: string) =>
     new SignJWT(claims)
@@ -187,7 +220,9 @@ export async function createIdp(options: IdpOptions): Promise<Server> {
       res.setHeader('WWW-Authenticate', 'Basic realm="mock-idp"');
       return oauthError(res, 401, 'invalid_client', 'Unknown client or wrong secret');
     }
-    const requested = form.get('scope')?.split(' ').filter(Boolean) ?? client.scopes;
+    // No scope, or an empty one (Swagger UI with nothing ticked): the client's scopes (RFC 6749 §3.3).
+    const asked = form.get('scope')?.split(' ').filter(Boolean) ?? [];
+    const requested = asked.length > 0 ? asked : client.scopes;
     if (!requested.every((scope) => client.scopes.includes(scope))) {
       return oauthError(res, 400, 'invalid_scope', 'Scope not granted to this client');
     }
@@ -316,7 +351,10 @@ export async function createIdp(options: IdpOptions): Promise<Server> {
     redirect(res, authorizationResponse(request.redirectUri, { code, state: request.state }));
   }
 
-  /** CORS for the browser app's origins only; no credentials, because there are no cookies. */
+  /**
+   * CORS for the allowed origins only; no credentials, because there are no cookies. Swagger UI
+   * sends the client in a Basic header and adds X-Requested-With.
+   */
   function tokenCors(req: IncomingMessage, res: ServerResponse): void {
     res.setHeader('Vary', 'Origin');
     const origin = req.headers.origin;
@@ -324,7 +362,10 @@ export async function createIdp(options: IdpOptions): Promise<Server> {
     res.setHeader('Access-Control-Allow-Origin', origin);
     if (req.method === 'OPTIONS') {
       res.setHeader('Access-Control-Allow-Methods', 'POST');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+      res.setHeader(
+        'Access-Control-Allow-Headers',
+        'Authorization, Content-Type, X-Requested-With',
+      );
       res.setHeader('Access-Control-Max-Age', '600');
     }
   }

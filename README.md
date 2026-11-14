@@ -253,6 +253,43 @@ security find-certificate -a -Z -c "Caddy Local Authority" ~/Library/Keychains/l
 In Firefox: _View Certificates…_ → _Authorities_, select _Caddy Local Authority - 2026 ECC Root_
 and choose _Delete or Distrust…_.
 
+## Public demo
+
+The same stack can run on one public server behind real hostnames, so that people can try it from
+their own browsers ([ADR 0019](docs/adr/0019-public-demo.md), runbook in
+[deploy/demo/README.md](deploy/demo/README.md)):
+
+- the support app at `https://demo.huizeblok.nl`;
+- the API with the Swagger UI at `https://api.demo.huizeblok.nl/docs`;
+- the mock IdP at `https://idp.demo.huizeblok.nl`.
+
+`deploy/demo/compose.yml` goes on top of `docker-compose.yml`. Every issuer, URL, CORS origin and
+redirect URI comes from the hostnames in `deploy/demo/.env`, and the edge
+(`deploy/demo/Caddyfile`) gets its certificates from Let's Encrypt over the TLS-ALPN challenge.
+Only port 443 is published: Postgres, RabbitMQ and the S3 gateway have no host port. Every
+password and client secret comes from that `.env`, which `deploy/demo/generate-env.sh` fills with
+random values on the server; compose refuses to start without any of them. The demo clients and
+the support user keep their names, with new secrets.
+
+```bash
+docker compose --env-file deploy/demo/.env -f docker-compose.yml -f deploy/demo/compose.yml \
+  --profile full up -d --no-build --wait
+node --experimental-strip-types deploy/demo/check-config.mts   # checks the rendered configuration
+API_BASE_URL=https://api.demo.huizeblok.nl IDP_BASE_URL=https://idp.demo.huizeblok.nl \
+  DEMO_SUPPLIER_SECRET=… DEMO_CUSTOMER_SECRET=… pnpm demo       # trusts the public CAs
+```
+
+**Trying the API in the Swagger UI.** `/docs` has an **Authorize** button for client credentials,
+locally at `https://localhost:3443/docs` too (once the browser trusts the local CA, see above):
+under `client-credentials`, enter `supplier-client` or `customer-client` and its secret
+(`change-me` locally), and Swagger UI fetches the token from the IdP. Then **Try it out** on
+`POST /documents` with a file from `examples/invoices`. The mock IdP answers CORS on `/token` only
+for the origins in `MOCK_IDP_CORS_ORIGINS` (the API's), and the API's CSP lets the page connect to
+the IdP's origin only.
+
+It is still a demo: the mock IdP gives a token to anyone with the demo secrets, so the server
+holds demo data only and is torn down after the interview.
+
 ## Architecture
 
 Two processes from one image: the **API** (intake and queries) and the **worker** (outbox relay

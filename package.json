@@ -23,7 +23,7 @@
     "infra:down": "docker compose --profile infra down",
     "redrive": "node --enable-source-maps --env-file-if-exists=apps/service/.env apps/service/dist/main-redrive.js",
     "tls:ca": "sh scripts/tls/edge-ca.sh",
-    "demo": "sh scripts/tls/edge-ca.sh node --experimental-strip-types --disable-warning=ExperimentalWarning scripts/demo/demo.mts"
+    "demo": "sh scripts/demo/run.sh"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

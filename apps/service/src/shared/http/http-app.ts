@@ -30,6 +30,11 @@ export interface HttpAppOptions {
    * CORS off; set, it opens only the read-only support endpoints (ADR 0017).
    */
   corsOrigins?: readonly string[];
+  /**
+   * The IdP's token endpoint (AUTH_TOKEN_URL). Set, the Swagger UI offers a client-credentials
+   * login, and its CSP lets the page call that endpoint's origin (ADR 0019).
+   */
+  oauthTokenUrl?: string;
 }
 
 /** Everything the API needs on top of ApiModule; shared by main-api.ts and the HTTP tests. */
@@ -39,10 +44,17 @@ export function configureHttpApp(app: INestApplication, options: HttpAppOptions 
   app.useLogger(app.get(Logger));
   // Security headers, including Strict-Transport-Security. upgrade-insecure-requests is dropped
   // so Swagger UI also works over plain http on localhost during development; in compose, TLS is
-  // terminated by the edge in front of the service.
+  // terminated by the edge in front of the service. With a token URL, the Swagger UI may also
+  // connect to the IdP's origin, and to no other.
+  const tokenOrigin = options.oauthTokenUrl && new URL(options.oauthTokenUrl).origin;
   app.use(
     helmet({
-      contentSecurityPolicy: { directives: { upgradeInsecureRequests: null } },
+      contentSecurityPolicy: {
+        directives: {
+          upgradeInsecureRequests: null,
+          ...(tokenOrigin ? { connectSrc: ["'self'", tokenOrigin] } : {}),
+        },
+      },
       strictTransportSecurity: {
         maxAge: options.hstsMaxAgeSeconds ?? 31_536_000,
         includeSubDomains: true,
@@ -52,5 +64,5 @@ export function configureHttpApp(app: INestApplication, options: HttpAppOptions 
   // No enableCors: the organisations' clients are servers, not browsers. Only the support app
   // runs in a browser, so only its endpoints get CORS, and only for the listed origins.
   if (options.corsOrigins?.length) app.use(SUPPORT_PATH, supportCors(options.corsOrigins));
-  setupOpenApi(app);
+  setupOpenApi(app, { oauthTokenUrl: options.oauthTokenUrl });
 }
