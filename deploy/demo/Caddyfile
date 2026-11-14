@@ -1,0 +1,49 @@
+# The edge of the public demo (ADR 0019): deploy/caddy/Caddyfile with public hostnames and
+# certificates from Let's Encrypt instead of Caddy's local CA. The hostnames, the ACME contact and
+# the ACME directory come from the environment (deploy/demo/.env, through deploy/demo/compose.yml).
+{
+	# The configuration is read-only and baked into the container: no admin API to publish or
+	# protect, and nothing persisted at runtime.
+	admin off
+	persist_config off
+	# HTTPS only. No listener on :80 and no redirect: by the time a plain HTTP request could be
+	# redirected, its client secret or bearer token has already crossed the network in clear text.
+	auto_https disable_redirects
+	# Not root (uid 10001), so an unprivileged port; compose publishes it as 443.
+	https_port 8443
+	# Let's Encrypt only, over the TLS-ALPN-01 challenge, which runs on 443 itself: port 80 stays
+	# closed. The HTTP-01 challenge would need a plain HTTP listener on public port 80.
+	cert_issuer acme {
+		dir {$ACME_CA:https://acme-v02.api.letsencrypt.org/directory}
+		email {$ACME_EMAIL}
+		disable_http_challenge
+	}
+	# HTTP/1.1 and HTTP/2 over TCP; HTTP/3 would need a UDP port that compose does not publish.
+	servers {
+		protocols h1 h2
+	}
+}
+
+(edge) {
+	# Defence in depth: slightly above the API's own limit of 1 MiB (which answers with Problem
+	# Details), so that only bodies no client should send are cut off here.
+	request_body {
+		max_size 1100KiB
+	}
+}
+
+https://{$DEMO_API_HOST} {
+	import edge
+	reverse_proxy api:3000
+}
+
+https://{$DEMO_IDP_HOST} {
+	import edge
+	reverse_proxy mock-idp:4000
+}
+
+# The support app's static files. Its CSP, HSTS and other headers come from the web service.
+https://{$DEMO_WEB_HOST} {
+	import edge
+	reverse_proxy web:8080
+}

@@ -1,0 +1,105 @@
+# The public demo (ADR 0019, runbook in deploy/demo/README.md), on top of docker-compose.yml:
+#
+#   docker compose --env-file deploy/demo/.env -f docker-compose.yml -f deploy/demo/compose.yml \
+#     --profile full up -d --no-build --wait
+#
+# What changes against the local stack:
+# - every URL, issuer, CORS origin and redirect URI names the public hosts (DEMO_*_HOST);
+# - the edge gets certificates from Let's Encrypt (deploy/demo/Caddyfile) and is the only service
+#   with a host port: 443, nothing else (the TLS-ALPN challenge needs no port 80);
+# - every password and client secret comes from deploy/demo/.env (generate-env.sh) and has no
+#   default: `${VAR:?}` makes compose refuse to start without it;
+# - the images are the published ones of TAG; the server never builds.
+# `node --experimental-strip-types deploy/demo/check-config.mts` checks all of this on the
+# rendered configuration.
+
+# API and worker: the settings with a secret or a public URL in them.
+x-demo-service-env: &demo-service-env
+  DATABASE_URL: postgresql://${POSTGRES_USER:-xip}:${POSTGRES_PASSWORD:?generate deploy/demo/.env}@postgres:5432/${POSTGRES_DB:-xip}
+  AMQP_URL: amqp://${RABBITMQ_USER:-xip}:${RABBITMQ_PASSWORD:?generate deploy/demo/.env}@rabbitmq:5672
+  S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:?generate deploy/demo/.env}
+  AUTH_ISSUER: https://${DEMO_IDP_HOST:?set in deploy/demo/.env}
+
+services:
+  postgres:
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?generate deploy/demo/.env}
+    ports: !reset []
+
+  rabbitmq:
+    environment:
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?generate deploy/demo/.env}
+    ports: !reset []
+
+  s3:
+    environment:
+      ROOT_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:?generate deploy/demo/.env}
+    ports: !reset []
+
+  migrate:
+    image: ghcr.io/gimme4bucks/xml-invoice-processor:${TAG:?set in deploy/demo/.env}
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-xip}:${POSTGRES_PASSWORD:?generate deploy/demo/.env}@postgres:5432/${POSTGRES_DB:-xip}
+
+  api:
+    image: ghcr.io/gimme4bucks/xml-invoice-processor:${TAG:?set in deploy/demo/.env}
+    environment:
+      <<: *demo-service-env
+      AUTH_TOKEN_URL: https://${DEMO_IDP_HOST:?set in deploy/demo/.env}/token
+      CORS_ORIGINS: https://${DEMO_WEB_HOST:?set in deploy/demo/.env}
+
+  worker:
+    image: ghcr.io/gimme4bucks/xml-invoice-processor:${TAG:?set in deploy/demo/.env}
+    environment: *demo-service-env
+
+  mock-idp:
+    image: ghcr.io/gimme4bucks/xml-invoice-processor-mock-idp:${TAG:?set in deploy/demo/.env}
+    environment:
+      AUTH_ISSUER: https://${DEMO_IDP_HOST:?set in deploy/demo/.env}
+      # The same demo clients and claims as docker-compose.yml, with generated secrets.
+      MOCK_IDP_CLIENTS: '{"supplier-client":{"secret":"${DEMO_SUPPLIER_SECRET:?generate deploy/demo/.env}","org_id":"org-supplier","peppol_id":"0106:11111111","scopes":["documents:submit","documents:read"]},"customer-client":{"secret":"${DEMO_CUSTOMER_SECRET:?generate deploy/demo/.env}","org_id":"org-customer","peppol_id":"0106:22222222","scopes":["documents:submit","documents:read"]}}'
+      MOCK_IDP_SUPPORT_REDIRECT_URIS: https://${DEMO_WEB_HOST:?set in deploy/demo/.env}/callback
+      MOCK_IDP_SUPPORT_USERS: '{"support-agent":{"password":"${DEMO_SUPPORT_PASSWORD:?generate deploy/demo/.env}"}}'
+      MOCK_IDP_CORS_ORIGINS: https://${DEMO_API_HOST:?set in deploy/demo/.env}
+
+  web:
+    image: ghcr.io/gimme4bucks/xml-invoice-processor-web:${TAG:?set in deploy/demo/.env}
+    environment:
+      API_URL: https://${DEMO_API_HOST:?set in deploy/demo/.env}
+      IDP_ISSUER: https://${DEMO_IDP_HOST:?set in deploy/demo/.env}
+
+  edge:
+    environment:
+      DEMO_WEB_HOST: ${DEMO_WEB_HOST:?set in deploy/demo/.env}
+      DEMO_API_HOST: ${DEMO_API_HOST:?set in deploy/demo/.env}
+      DEMO_IDP_HOST: ${DEMO_IDP_HOST:?set in deploy/demo/.env}
+      ACME_EMAIL: ${ACME_EMAIL:?set in deploy/demo/.env}
+      ACME_CA: ${ACME_CA:-https://acme-v02.api.letsencrypt.org/directory}
+    volumes: !override
+      - ./deploy/demo/Caddyfile:/etc/caddy/Caddyfile:ro
+      # The ACME account and the certificates: keep it across restarts, or Let's Encrypt's rate
+      # limits (5 certificates per hostname set per week) come into play.
+      - edge-data:/data
+    ports: !override
+      - '443:8443'
+    # A verified HTTPS request to every host, with the public CAs of the image's trust store. It
+    # turns healthy once the certificates are issued; until then (or with the staging CA) it fails.
+    healthcheck:
+      test: !override
+        - CMD
+        - curl
+        - --silent
+        - --show-error
+        - --fail-early
+        - --output
+        - /dev/null
+        - --resolve
+        - ${DEMO_API_HOST}:8443:127.0.0.1
+        - --resolve
+        - ${DEMO_IDP_HOST}:8443:127.0.0.1
+        - --resolve
+        - ${DEMO_WEB_HOST}:8443:127.0.0.1
+        - https://${DEMO_API_HOST}:8443/health
+        - https://${DEMO_IDP_HOST}:8443/.well-known/jwks.json
+        - https://${DEMO_WEB_HOST}:8443/
+      start_period: 120s

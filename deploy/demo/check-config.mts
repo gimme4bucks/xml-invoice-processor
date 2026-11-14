@@ -7,7 +7,9 @@
  * - only the edge publishes a port, and only 443;
  * - no URL, issuer, CORS origin or redirect URI still names localhost: each names a public host;
  * - no secret has a default: without any one of them, rendering fails, and no demo default
- *   (`change-me`, `xip`, `xip-secret`) remains.
+ *   (`change-me`, `xip`, `xip-secret`) remains;
+ * - Caddy accepts deploy/demo/Caddyfile (offline, in the edge's image): one HTTPS listener and
+ *   Let's Encrypt over TLS-ALPN, without the HTTP challenge.
  *
  *   node --experimental-strip-types deploy/demo/check-config.mts
  */
@@ -50,7 +52,28 @@ function variables(): Record<string, string> {
   return Object.fromEntries(names.map((name) => [name, values[name] ?? '']));
 }
 
+/** The parts of Caddy's JSON configuration (`caddy adapt`) that the check reads. */
+interface CaddyConfig {
+  admin?: { disabled?: boolean };
+  apps: {
+    http: { servers: Record<string, { listen: string[] }> };
+    tls: {
+      automation: {
+        policies: {
+          issuers: {
+            module: string;
+            ca?: string;
+            email?: string;
+            challenges?: { http?: { disabled?: boolean } };
+          }[];
+        }[];
+      };
+    };
+  };
+}
+
 interface Service {
+  image?: string;
   environment?: Record<string, string>;
   ports?: { published?: string; target: number }[];
   volumes?: { source?: string; target: string }[];
@@ -125,8 +148,9 @@ try {
     'the edge publishes 443 only',
   );
 
-  const rendered = JSON.stringify(config);
-  check(!/localhost/.test(rendered), 'no localhost anywhere in the rendered configuration');
+  // The services as they run; the base file's `x-` fragments are rendered too, but unused.
+  const rendered = JSON.stringify(services);
+  check(!/localhost/.test(rendered), 'no localhost anywhere in the services');
 
   const environment = (service: string) => services[service]?.environment ?? {};
   const expected: [string, string, string][] = [
@@ -162,7 +186,7 @@ try {
   }
   for (const name of SECRETS) {
     check(rendered.includes(`check-${name.toLowerCase()}`), `${name} reaches the configuration`);
-    const { [name]: _omitted, ...without } = env;
+    const without = Object.fromEntries(Object.entries(env).filter(([key]) => key !== name));
     let refused = false;
     try {
       render(without);
@@ -171,6 +195,44 @@ try {
     }
     check(refused, `${name} has no default: compose refuses to render without it`);
   }
+
+  const caddy = JSON.parse(
+    execFileSync(
+      'docker',
+      [
+        'run',
+        '--rm',
+        '--network',
+        'none',
+        ...[...Object.entries(HOSTS), ['ACME_EMAIL', env.ACME_EMAIL]].flatMap(([name, value]) => [
+          '-e',
+          `${name}=${value}`,
+        ]),
+        '-v',
+        `${path.join(root, 'deploy/demo/Caddyfile')}:/etc/caddy/Caddyfile:ro`,
+        edge?.image ?? 'caddy',
+        'caddy',
+        'adapt',
+        '--validate',
+        '--config',
+        '/etc/caddy/Caddyfile',
+      ],
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+    ),
+  ) as CaddyConfig;
+  check(true, 'Caddy validates deploy/demo/Caddyfile');
+  check(caddy.admin?.disabled === true, 'the Caddy admin API is off');
+  const listeners = Object.values(caddy.apps.http.servers).flatMap((server) => server.listen);
+  check(listeners.join() === ':8443', `Caddy listens on :8443 only (${listeners.join(', ')})`);
+  const issuers = caddy.apps.tls.automation.policies.flatMap((policy) => policy.issuers);
+  check(
+    issuers.length === 1 &&
+      issuers[0]?.module === 'acme' &&
+      issuers[0].ca === 'https://acme-v02.api.letsencrypt.org/directory' &&
+      issuers[0].email === env.ACME_EMAIL &&
+      issuers[0].challenges?.http?.disabled === true,
+    "certificates from Let's Encrypt with the contact e-mail, without the HTTP challenge",
+  );
 } catch (error) {
   const stderr = (error as { stderr?: string }).stderr;
   check(false, `renders: ${stderr?.trim() || (error as Error).message}`);
