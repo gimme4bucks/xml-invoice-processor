@@ -146,6 +146,9 @@ services:
       # CORS for the support app's origin, on the read-only /support endpoints only (ADR 0017).
       # Off when empty, the API's default. The app is the `web` service (ADR 0018).
       CORS_ORIGINS: ${CORS_ORIGINS:-https://localhost:5443}
+      # The Swagger UI's Authorize button (client credentials, ADR 0019) fetches its token from
+      # the IdP through the edge, from the browser.
+      AUTH_TOKEN_URL: https://localhost:4443/token
     # No ports: only reachable through the edge.
     # Not on mock-idp: the API fetches the signing keys on the first request, so it starts
     # (and answers /health) without the IdP, as it must with a real external one.
@@ -196,6 +199,8 @@ services:
       # exact redirect URI (the `web` service's callback, ADR 0018) and a demo support employee.
       MOCK_IDP_SUPPORT_REDIRECT_URIS: ${MOCK_IDP_SUPPORT_REDIRECT_URIS:-https://localhost:5443/callback}
       MOCK_IDP_SUPPORT_USERS: ${MOCK_IDP_SUPPORT_USERS:-{"support-agent":{"password":"change-me"}}}
+      # The API's Swagger UI calls /token from the browser (ADR 0019): CORS for its origin only.
+      MOCK_IDP_CORS_ORIGINS: https://localhost:3443
     # No ports: only reachable through the edge.
     healthcheck:
       test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:4000/.well-known/jwks.json']
