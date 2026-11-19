@@ -26,7 +26,7 @@ COPY apps/web/ apps/web/
 RUN pnpm -F @xip/web build
 
 # The edge's Caddy release, as an exact tag plus digest.
-FROM caddy:2.11.8-alpine@sha256:f6228111e5fafa1a5238258d0858e103f10599b8d1659a146e7726681a002bb9 AS runtime
+FROM caddy:2.11.9-alpine@sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0 AS runtime
 # Production default, like the API's: a year. The compose stack sets 300 seconds (ADR 0013).
 ENV HSTS_MAX_AGE_SECONDS=31536000
 # Root-owned and only readable for the server's user: the container runs with a read-only root
